@@ -111,6 +111,7 @@ rebuildAll();
 // ============================================================
 const TABS = [
   { id: 'sezon2627', label: 'Sezon 26/27' },
+  { id: 'wyniki', label: 'Wyniki' },
   { id: 'terminarz', label: 'Terminarz (historia)' },
   { id: 'druzyny', label: 'Drużyny' },
   { id: 'h2h', label: 'H2H' },
@@ -469,6 +470,51 @@ const PRESEASON_GAMES = PRESEASON_GAMES_RAW.map(([date, time, home, away]) => ({
   date_iso: date, time, home_team: mapTeamName(home), away_team: mapTeamName(away)
 }));
 
+// ------------------------------------------------------------
+// WYNIKI ROZEGRANYCH MECZÓW PRESEASON (źródło: en.24score.com)
+// [data (jak w terminarzu), gospodarz, gość, Q1, Q2, Q3, Q4] — każda kwarta jako [gosp, gość]
+// Kolejne wyniki dopisuj tutaj (albo wpisz ręcznie w zakładce Wyniki — zapis lokalny w przeglądarce).
+// ------------------------------------------------------------
+const PRESEASON_RESULTS_RAW = [
+  ['2026-10-04', 'Toronto Raptors', 'Miami Heat', [23, 41], [32, 35], [25, 19], [25, 34]],
+  ['2026-10-05', 'Denver Nuggets', 'Utah Jazz', [26, 36], [26, 27], [25, 25], [20, 21]],
+  ['2026-10-05', 'LA Clippers', 'Golden State', [23, 24], [32, 19], [22, 30], [27, 28]],
+];
+function psKey(d, h, a) { return `${d}|${h}|${a}`; }
+const PRESEASON_RESULTS = {};
+PRESEASON_RESULTS_RAW.forEach(([date_iso, home_team, away_team, q1, q2, q3, q4]) => {
+  const fx = PRESEASON_GAMES.find(g => g.date_iso === date_iso && g.home_team === home_team && g.away_team === away_team);
+  const halfH = q1[0] + q2[0], halfA = q1[1] + q2[1];
+  PRESEASON_RESULTS[psKey(date_iso, home_team, away_team)] = {
+    date_iso, time: fx ? fx.time : '', home_team, away_team, q: [q1, q2, q3, q4], halfH, halfA,
+    final_home: halfH + q3[0] + q4[0], final_away: halfA + q3[1] + q4[1],
+    classification: classifyQuarters(q1[0], q1[1], q2[0], q2[1], q3[0], q3[1], q4[0], q4[1]),
+    source: 'file',
+  };
+});
+// wyniki z pliku + wpisane ręcznie (localStorage); wpis z pliku ma pierwszeństwo
+function allPreseasonResults() {
+  const out = Object.values(PRESEASON_RESULTS).map(r => ({ ...r }));
+  const seen = new Set(out.map(r => psKey(r.date_iso, r.home_team, r.away_team)));
+  loadTracked().forEach((t, i) => {
+    const k = psKey(t.date_iso, t.home_team, t.away_team);
+    if (seen.has(k)) return;
+    seen.add(k);
+    const fx = PRESEASON_GAMES.find(g => psKey(g.date_iso, g.home_team, g.away_team) === k);
+    out.push({
+      date_iso: t.date_iso, time: fx ? fx.time : '', home_team: t.home_team, away_team: t.away_team,
+      q: null, halfH: null, halfA: null, final_home: t.final_home, final_away: t.final_away,
+      classification: t.classification, source: 'local', trackedIdx: i,
+    });
+  });
+  return out;
+}
+function trackableFixtures() {
+  const done = new Set(allPreseasonResults().map(r => psKey(r.date_iso, r.home_team, r.away_team)));
+  return PRESEASON_GAMES.filter(g => TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team) && !done.has(psKey(g.date_iso, g.home_team, g.away_team)));
+}
+const clsLabel = c => c === 'brak_lamaka' ? 'NIC' : (LABELS[c] || '—');
+
 function preseasonB2B(fixture) {
   const oneDayMs = 24 * 3600 * 1000;
   const d = new Date(fixture.date_iso).getTime();
@@ -512,16 +558,16 @@ function saveTracked(arr) {
   try { localStorage.setItem(TRACK_KEY, JSON.stringify(arr)); return true; } catch (e) { return false; }
 }
 
-function renderTrackingPanel(containerId) {
+function renderTrackingPanel(containerId, opts = {}) {
   const box = document.getElementById(containerId);
   const tracked = loadTracked();
 
-  const fixtureOptions = PRESEASON_GAMES.filter(g => TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team))
+  const fixtureOptions = trackableFixtures()
     .map((g, i) => `<option value="${i}">${fmtDate(g.date_iso)} ${g.time} — ${g.home_team} vs ${g.away_team}</option>`).join('');
 
   let html = `
   <div class="card" style="margin-top:20px;">
-    <h3>📝 Wpisz rzeczywisty wynik po meczu</h3>
+    <h3>📝 Dopisz wynik meczu</h3>
     <div class="small-note" style="margin-top:-6px;margin-bottom:14px;">Jak tylko mecz się odbędzie, wpisz wynik po kwartach — strona sama policzy 1/2 / 2/1 / X i porówna z tym, co przewidziała wcześniej. Dane zapisują się <b>lokalnie w tej przeglądarce</b> (nie wysyłamy ich nigdzie) — jeśli otworzysz plik na innym urządzeniu, historia się nie przeniesie.</div>
     <div class="controls-row">
       <div class="field" style="flex:1;min-width:280px;"><label>Mecz</label><select id="track-fixture">${fixtureOptions}</select></div>
@@ -540,9 +586,10 @@ function renderTrackingPanel(containerId) {
 
   document.getElementById('track-submit').onclick = () => {
     const idx = +document.getElementById('track-fixture').value;
-    const fixture = PRESEASON_GAMES.filter(g => TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team))[idx];
+    const fixture = trackableFixtures()[idx];
     const vals = ['q1h', 'q1a', 'q2h', 'q2a', 'q3h', 'q3a', 'q4h', 'q4a'].map(id => +document.getElementById('track-' + id).value);
     const errBox = document.getElementById('track-error');
+    if (!fixture) { errBox.textContent = 'Wybierz mecz z listy.'; return; }
     if (vals.some(v => isNaN(v) || v < 0)) { errBox.textContent = 'Uzupełnij wszystkie 8 pól wynikami kwart (liczby ≥ 0).'; return; }
     errBox.textContent = '';
     const [q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a] = vals;
@@ -556,10 +603,11 @@ function renderTrackingPanel(containerId) {
       logged_at: new Date().toISOString(),
     });
     saveTracked(arr);
-    renderTrackingPanel(containerId);
+    if (opts.onChange) opts.onChange(); else renderTrackingPanel(containerId, opts);
   };
 
   const resBox = document.getElementById('track-results');
+  if (opts.formOnly) { resBox.innerHTML = ''; return; }
   if (!tracked.length) {
     resBox.innerHTML = `<div class="empty-state" style="padding:24px;"><div class="ico">◇</div>Brak zapisanych wyników jeszcze — wpisz pierwszy powyżej, gdy tylko rozegracie się mecze.</div>`;
     return;
@@ -602,14 +650,17 @@ function renderTrackingPanel(containerId) {
 
 function renderSezon2627() {
   const el = document.getElementById('view-sezon2627');
+  const resMap = {};
+  allPreseasonResults().forEach(r => { resMap[psKey(r.date_iso, r.home_team, r.away_team)] = r; });
   const allRows = PRESEASON_GAMES.map((g, idx) => {
     const known = TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team);
     if (!known) return { ...g, idx, unknown: true };
     const sig = computeMatchSignal(g.home_team, g.away_team, false, false, g.date_iso);
-    return { ...g, idx, sig, risk: sig.pLamak + sig.pRemis, b2b: preseasonB2B(g) };
+    return { ...g, idx, sig, risk: sig.pLamak + sig.pRemis, b2b: preseasonB2B(g), res: resMap[psKey(g.date_iso, g.home_team, g.away_team)] || null };
   });
+  const playedCount = allRows.filter(r => r.res).length;
   const known = allRows.filter(r => !r.unknown);
-  const byRiskDesc = [...known].sort((a, b) => b.risk - a.risk);
+  const byRiskDesc = [...known.filter(r => !r.res)].sort((a, b) => b.risk - a.risk);
   const hotSet = new Set(byRiskDesc.slice(0, 3));
   const warmSet = new Set(byRiskDesc.slice(3, 8));
   const rows = allRows.slice().sort((a, b) => a.date_iso.localeCompare(b.date_iso) || a.time.localeCompare(b.time));
@@ -619,7 +670,7 @@ function renderSezon2627() {
   <div class="card" style="margin-bottom:20px;border:1.5px solid var(--cnone);background:#FFF7F5;">
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
       <h3 style="color:var(--cnone);margin:0;">⚠ Obecnie: PRESEASON (mecze towarzyskie)</h3>
-      <span class="mono small-note">${rows.length} zaplanowanych meczów</span>
+      <span class="mono small-note">${rows.length} meczów · ${playedCount} rozegranych</span>
     </div>
     <div class="small-note" style="margin-top:8px;">
       To mecze towarzyskie — trenerzy testują rotacje, gwiazdy grają ograniczone minuty, wynik nikogo nie obchodzi. Sygnały poniżej liczone tym samym modelem co w zakładce Prognoza, ale <b>nie są tu wiarygodne w normalnym sensie</b> — potraktuj to jako rozgrzewkę.
@@ -641,7 +692,7 @@ function renderSezon2627() {
   </div>
 
   <div id="s2627-list" class="card"></div>
-  <div id="s2627-tracking"></div>`;
+  <div class="small-note" style="margin-top:14px;">Rozegrane mecze są zaznaczone kolorem (zielony 1/2 · żółty 2/1 · fioletowy X · czerwony NIC) i mają wynik zamiast prognozy. Szczegóły po kwartach oraz wpisywanie kolejnych wyników → zakładka <b>Wyniki</b>.</div>`;
   el.innerHTML = html;
   el.querySelectorAll('table [data-idx]').forEach(elx => { elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]); });
 
@@ -662,6 +713,17 @@ function renderSezon2627() {
     const star = tier === 'hot' ? '⭐ ' : '';
     const b2bNote = (r.b2b.home || r.b2b.away) ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="Zagrali/zagrają inny mecz preseason w ciągu doby">🔁 b2b</span>` : '';
     const topTag = r.sig.tags[0] ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="${r.sig.tags[0].label}">🔍 ${r.sig.tags[0].short}</span>` : '';
+    if (r.res) {
+      const c = r.res.classification;
+      const half = r.res.halfH !== null ? ` <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span>` : '';
+      listHtml += `<div class="game-row-nodate ${rowClass(c)}" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;">
+        <div class="mono small-note">${r.time}</div>
+        <div>${r.home_team} — ${r.away_team} ${b2bNote}</div>
+        <div class="mono" style="font-size:12.5px;"><b>${r.res.final_home}:${r.res.final_away}</b>${half}</div>
+        <div class="gbadge"><span class="badge ${badgeClass(c)}">${clsLabel(c)}</span></div>
+      </div>`;
+      return;
+    }
     listHtml += `<div class="game-row-nodate" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;${tierStyle}">
       <div class="mono small-note">${r.time}</div>
       <div>${star}${r.home_team} — ${r.away_team} ${b2bNote}${topTag}</div>
@@ -677,7 +739,6 @@ function renderSezon2627() {
     elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]);
   });
 
-  renderTrackingPanel('s2627-tracking');
 }
 
 function lastGamesListHTML(team) {
@@ -877,9 +938,102 @@ function computeKolejkaMap(stageFilter) {
   return { map, maxPerSeason };
 }
 
+
+// ============================================================
+// WYNIKI — rozegrane mecze preseason 26/27 (po kwartach) + wpisywanie kolejnych
+// ============================================================
+function renderWyniki() {
+  const el = document.getElementById('view-wyniki');
+  const res = allPreseasonResults().sort((a, b) => b.date_iso.localeCompare(a.date_iso) || b.time.localeCompare(a.time));
+  const cnt = { '1/2': 0, '2/1': 0, 'X': 0, 'brak_lamaka': 0 };
+  res.forEach(r => { cnt[r.classification] = (cnt[r.classification] || 0) + 1; });
+  const lamaki = cnt['1/2'] + cnt['2/1'] + cnt['X'];
+
+  function predText(r) {
+    if (!TEAMS.includes(r.home_team) || !TEAMS.includes(r.away_team)) return '—';
+    try {
+      const sig = computeMatchSignal(r.home_team, r.away_team, false, false, r.date_iso);
+      return `ŁAMAK ${sig.pLamak.toFixed(0)}% · REMIS ${sig.pRemis.toFixed(0)}%`;
+    } catch (e) { return '—'; }
+  }
+
+  let html = `<div class="section-title"><h2>Wyniki</h2><div class="rule"></div></div>
+  <div class="section-desc">Rozegrane mecze preseason 26/27 z wynikami po kwartach. Kolory jak w całej aplikacji: zielony 1/2, żółty 2/1, fioletowy X, czerwony NIC. Kolumna „Prognoza” to to, co model dawał przed meczem.</div>
+  <div class="grid grid-3" style="margin:16px 0;">
+    <div class="card"><div class="stat"><div class="val">${res.length}</div><div class="lbl">Rozegranych meczów</div></div></div>
+    <div class="card"><div class="stat"><div class="val">${lamaki}/${res.length}</div><div class="lbl">Łamaki (${fmtPct(lamaki, res.length)})</div></div></div>
+    <div class="card"><div class="stat"><div class="val">${cnt['1/2']} · ${cnt['2/1']} · ${cnt['X']}</div><div class="lbl">1/2 · 2/1 · X</div></div></div>
+  </div>`;
+
+  if (!res.length) {
+    html += `<div class="empty-state"><div class="ico">◇</div>Brak rozegranych meczów.</div>`;
+  } else {
+    html += `<div class="card" style="overflow-x:auto;"><table><thead><tr>
+      <th>Data</th><th>Mecz</th><th class="num">Q1</th><th class="num">Q2</th><th class="num">Q3</th><th class="num">Q4</th>
+      <th class="num">Przerwa</th><th class="num">Wynik</th><th>Typ</th><th>Prognoza</th><th></th></tr></thead><tbody>
+      ${res.map(r => {
+        const qc = i => r.q ? `${r.q[i][0]}:${r.q[i][1]}` : '—';
+        const half = r.halfH !== null ? `${r.halfH}:${r.halfA}` : '—';
+        const rm = r.source === 'local' ? `<span class="small-note" style="cursor:pointer;text-decoration:underline;" data-remove="${r.trackedIdx}">usuń</span>` : '';
+        return `<tr class="${rowClass(r.classification)}">
+          <td class="mono">${fmtDate(r.date_iso)}<div class="small-note">${r.time}</div></td>
+          <td>${r.home_team} — ${r.away_team}</td>
+          <td class="num mono">${qc(0)}</td><td class="num mono">${qc(1)}</td><td class="num mono">${qc(2)}</td><td class="num mono">${qc(3)}</td>
+          <td class="num mono">${half}</td>
+          <td class="num mono"><b>${r.final_home}:${r.final_away}</b></td>
+          <td><span class="badge ${badgeClass(r.classification)}">${clsLabel(r.classification)}</span></td>
+          <td class="small-note">${predText(r)}</td>
+          <td>${rm}</td></tr>`;
+      }).join('')}
+    </tbody></table></div>`;
+  }
+  html += `<div id="wyniki-tracking"></div>`;
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-remove]').forEach(x => {
+    x.onclick = () => { const a = loadTracked(); a.splice(+x.dataset.remove, 1); saveTracked(a); renderWyniki(); };
+  });
+  renderTrackingPanel('wyniki-tracking', { formOnly: true, onChange: renderWyniki });
+}
+
+// Preseason w zakładce Terminarz (historia) — wybierany w polu „Faza”
+function renderPreseasonHistory(box) {
+  let res = allPreseasonResults();
+  if (terminarzTeamFilter !== 'all') res = res.filter(r => r.home_team === terminarzTeamFilter || r.away_team === terminarzTeamFilter);
+  if (terminarzTypeFilter === 'lamak') res = res.filter(r => isLamak(r.classification));
+  else if (terminarzTypeFilter !== 'all') res = res.filter(r => r.classification === terminarzTypeFilter);
+  res.sort((a, b) => b.date_iso.localeCompare(a.date_iso) || b.time.localeCompare(a.time));
+  if (!res.length) { box.innerHTML = `<div class="empty-state"><div class="ico">◇</div>Brak rozegranych meczów preseason dla wybranych filtrów.</div>`; return; }
+
+  const counts = { '1/2': 0, '2/1': 0, 'X': 0 };
+  res.forEach(r => { if (counts[r.classification] !== undefined) counts[r.classification]++; });
+  let html = `<div class="card" style="padding:14px 18px;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span style="font-family:'Oswald',sans-serif;font-size:15px;text-transform:uppercase;letter-spacing:0.02em;">Preseason 2026/27</span>
+      <span class="mono small-note">${res.length} mecz.</span>
+      <span class="day-pill" style="background:var(--c12-soft);color:var(--c12)">1/2 ×${counts['1/2']}</span>
+      <span class="day-pill" style="background:var(--c21-soft);color:var(--c21)">2/1 ×${counts['2/1']}</span>
+      <span class="day-pill" style="background:var(--cx-soft);color:var(--cx)">X ×${counts['X']}</span>
+    </div>
+    <div class="small-note" style="margin-top:6px;">Mecze towarzyskie — nie wliczają się do statystyk drużyn, H2H ani prognozy.</div>`;
+  let lastDay = null;
+  res.forEach(r => {
+    if (r.date_iso !== lastDay) {
+      html += `<div class="day-divider" style="cursor:default;"><span class="dname">${fmtDate(r.date_iso)}</span></div>`;
+      lastDay = r.date_iso;
+    }
+    const half = r.halfH !== null ? `<div class="small-note" style="font-weight:400;">przerwa ${r.halfH}:${r.halfA}</div>` : '';
+    const title = r.q ? r.q.map(x => `${x[0]}:${x[1]}`).join(', ') : '';
+    html += `<div class="game-row-nodate ${rowClass(r.classification)}" style="cursor:default;" title="${title}">
+      <div>${r.home_team}</div><div class="gscore mono">${r.final_home}:${r.final_away}${half}</div><div>${r.away_team}</div>
+      <div class="gbadge"><span class="badge ${badgeClass(r.classification)}">${clsLabel(r.classification)}</span></div></div>`;
+  });
+  box.innerHTML = html + `</div>`;
+}
+
 function renderTerminarz() {
   const el = document.getElementById('view-terminarz');
-  const { maxPerSeason } = computeKolejkaMap(terminarzStageFilter);
+  const { maxPerSeason } = computeKolejkaMap(terminarzStageFilter === 'preseason' ? 'regular' : terminarzStageFilter);
   const globalMax = Math.max(...Object.values(maxPerSeason), 1);
   if (terminarzRoundFrom === null) terminarzRoundFrom = 1;
   if (terminarzRoundTo === null) terminarzRoundTo = globalMax;
@@ -896,6 +1050,7 @@ function renderTerminarz() {
         <option value="playoff" ${terminarzStageFilter === 'playoff' ? 'selected' : ''}>Playoff</option>
         <option value="playin" ${terminarzStageFilter === 'playin' ? 'selected' : ''}>Play-in</option>
         <option value="all" ${terminarzStageFilter === 'all' ? 'selected' : ''}>Wszystko</option>
+        <option value="preseason" ${terminarzStageFilter === 'preseason' ? 'selected' : ''}>Preseason 26/27</option>
       </select>
     </div>
     <div class="field"><label>Od kolejki (1 = początek sezonu, październik)</label>
@@ -951,6 +1106,7 @@ function renderTerminarz() {
 
 function renderTerminarzList() {
   const box = document.getElementById('term-list');
+  if (terminarzStageFilter === 'preseason') { renderPreseasonHistory(box); return; }
   const { map: kolejkaMap } = computeKolejkaMap(terminarzStageFilter);
 
   let games = GAMES().filter(g => terminarzStageFilter === 'all' || g.stage === terminarzStageFilter);
@@ -2068,7 +2224,7 @@ function renderForecastResult() {
 // INIT
 // ============================================================
 const RENDERERS = {
-  sezon2627: renderSezon2627, wnioski: renderWnioski, terminarz: renderTerminarz, druzyny: renderDruzyny, h2h: renderH2H,
+  sezon2627: renderSezon2627, wyniki: renderWyniki, wnioski: renderWnioski, terminarz: renderTerminarz, druzyny: renderDruzyny, h2h: renderH2H,
   analiza: renderAnaliza, prognoza: renderPrognoza
 };
 selectTab('sezon2627');
