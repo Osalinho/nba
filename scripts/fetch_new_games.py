@@ -78,6 +78,8 @@ def fetch_date(d: date):
         home_row, away_row = home_rows.iloc[0], away_rows.iloc[0]
 
         stage, season = season_id_to_stage_and_season(gh.get('SEASON', ''), d)
+        if stage == 'preseason':
+            continue  # preseason obsługuje scripts/fetch_preseason_24score.py (osobny plik, nie psuje statystyk)
 
         home_abbr, away_abbr = home_row['TEAM_ABBREVIATION'], away_row['TEAM_ABBREVIATION']
         if home_abbr not in NBA_ABBR_TO_NAME or away_abbr not in NBA_ABBR_TO_NAME:

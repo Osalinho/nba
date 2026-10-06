@@ -471,49 +471,53 @@ const PRESEASON_GAMES = PRESEASON_GAMES_RAW.map(([date, time, home, away]) => ({
 }));
 
 // ------------------------------------------------------------
-// WYNIKI ROZEGRANYCH MECZÓW PRESEASON (źródło: en.24score.com)
-// [data (jak w terminarzu), gospodarz, gość, Q1, Q2, Q3, Q4] — każda kwarta jako [gosp, gość]
-// Kolejne wyniki dopisuj tutaj (albo wpisz ręcznie w zakładce Wyniki — zapis lokalny w przeglądarce).
+// WYNIKI ROZEGRANYCH MECZÓW PRESEASON — pobierane automatycznie z en.24score.com
+// (scripts/fetch_preseason_24score.py -> data/preseason_results.json, codziennie przez GitHub Actions).
+// Strona ma wbudowaną kopię z chwili budowy, a po otwarciu dociąga świeży plik JSON
+// (patrz refreshPreseasonResults) — dzięki temu nowe wyniki nie wymagają przebudowy index.html.
+// Mecz łączymy z terminarzem po parze gospodarz–gość (nie po dacie), więc strefa czasowa nie ma znaczenia.
 // ------------------------------------------------------------
-const PRESEASON_RESULTS_RAW = [
-  ['2026-10-04', 'Toronto Raptors', 'Miami Heat', [23, 41], [32, 35], [25, 19], [25, 34]],
-  ['2026-10-05', 'Denver Nuggets', 'Utah Jazz', [26, 36], [26, 27], [25, 25], [20, 21]],
-  ['2026-10-05', 'LA Clippers', 'Golden State', [23, 24], [32, 19], [22, 30], [27, 28]],
-];
 function psKey(d, h, a) { return `${d}|${h}|${a}`; }
-const PRESEASON_RESULTS = {};
-PRESEASON_RESULTS_RAW.forEach(([date_iso, home_team, away_team, q1, q2, q3, q4]) => {
-  const fx = PRESEASON_GAMES.find(g => g.date_iso === date_iso && g.home_team === home_team && g.away_team === away_team);
-  const halfH = q1[0] + q2[0], halfA = q1[1] + q2[1];
-  PRESEASON_RESULTS[psKey(date_iso, home_team, away_team)] = {
-    date_iso, time: fx ? fx.time : '', home_team, away_team, q: [q1, q2, q3, q4], halfH, halfA,
-    final_home: halfH + q3[0] + q4[0], final_away: halfA + q3[1] + q4[1],
-    classification: classifyQuarters(q1[0], q1[1], q2[0], q2[1], q3[0], q3[1], q4[0], q4[1]),
-    source: 'file',
-  };
-});
-// wyniki z pliku + wpisane ręcznie (localStorage); wpis z pliku ma pierwszeństwo
-function allPreseasonResults() {
-  const out = Object.values(PRESEASON_RESULTS).map(r => ({ ...r }));
-  const seen = new Set(out.map(r => psKey(r.date_iso, r.home_team, r.away_team)));
-  loadTracked().forEach((t, i) => {
-    const k = psKey(t.date_iso, t.home_team, t.away_team);
-    if (seen.has(k)) return;
-    seen.add(k);
-    const fx = PRESEASON_GAMES.find(g => psKey(g.date_iso, g.home_team, g.away_team) === k);
-    out.push({
-      date_iso: t.date_iso, time: fx ? fx.time : '', home_team: t.home_team, away_team: t.away_team,
-      q: null, halfH: null, halfA: null, final_home: t.final_home, final_away: t.final_away,
-      classification: t.classification, source: 'local', trackedIdx: i,
-    });
+let PRESEASON_RESULTS = {};
+function setPreseasonResults(list) {
+  const out = {};
+  (list || []).forEach(it => {
+    const q = it.q;
+    if (!q || q.length < 4) return;
+    const fx = PRESEASON_GAMES.find(g => g.home_team === it.home_team && g.away_team === it.away_team);
+    const [dd, mm, yy] = (it.date || '').split('.');
+    const date_iso = fx ? fx.date_iso : (yy ? `${yy}-${mm}-${dd}` : '');
+    const halfH = q[0][0] + q[1][0], halfA = q[0][1] + q[1][1];
+    const regH = halfH + q[2][0] + q[3][0], regA = halfA + q[2][1] + q[3][1];
+    out[psKey(date_iso, it.home_team, it.away_team)] = {
+      date_iso, time: fx ? fx.time : '', home_team: it.home_team, away_team: it.away_team, q, halfH, halfA,
+      final_home: it.final_home ?? regH, final_away: it.final_away ?? regA, ot: (it.ot || []).length,
+      classification: classifyQuarters(q[0][0], q[0][1], q[1][0], q[1][1], q[2][0], q[2][1], q[3][0], q[3][1]),
+    };
   });
-  return out;
+  PRESEASON_RESULTS = out;
 }
-function trackableFixtures() {
-  const done = new Set(allPreseasonResults().map(r => psKey(r.date_iso, r.home_team, r.away_team)));
-  return PRESEASON_GAMES.filter(g => TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team) && !done.has(psKey(g.date_iso, g.home_team, g.away_team)));
-}
+function allPreseasonResults() { return Object.values(PRESEASON_RESULTS).map(r => ({ ...r })); }
+const PRESEASON_EMBEDDED = (() => {
+  try { return JSON.parse(document.getElementById('preseason-data').textContent || '[]'); } catch (e) { return []; }
+})();
+setPreseasonResults(PRESEASON_EMBEDDED);
 const clsLabel = c => c === 'brak_lamaka' ? 'NIC' : (LABELS[c] || '—');
+// dociąga świeży data/preseason_results.json (działa na GitHub Pages; z pliku lokalnego cicho pomija)
+function refreshPreseasonResults() {
+  if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+  fetch('data/preseason_results.json?v=' + Date.now(), { cache: 'no-store' })
+    .then(r => (r.ok ? r.json() : null))
+    .then(list => {
+      if (!Array.isArray(list)) return;
+      const before = JSON.stringify(PRESEASON_RESULTS);
+      setPreseasonResults(list);
+      if (JSON.stringify(PRESEASON_RESULTS) === before) return;
+      const act = document.querySelector('.tab-btn.active');
+      if (act && RENDERERS[act.dataset.tab]) RENDERERS[act.dataset.tab]();
+    })
+    .catch(() => {});
+}
 
 function preseasonB2B(fixture) {
   const oneDayMs = 24 * 3600 * 1000;
@@ -535,8 +539,7 @@ function lastGamesFor(team, n = 5) {
 }
 
 // ============================================================
-// ŚLEDZENIE TRAFNOŚCI — wpisujesz realny wynik, gdy mecz się odbędzie,
-// a strona sama porównuje z tym co przewidziała wcześniej
+// KLASYFIKACJA ŁAMAKA z wyniku po kwartach (używana dla rozegranych meczów preseason)
 // ============================================================
 function classifyQuarters(q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a) {
   const halfH = q1h + q2h, halfA = q1a + q2a;
@@ -550,104 +553,9 @@ function classifyQuarters(q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a) {
   return 'brak_lamaka';
 }
 
-const TRACK_KEY = 'nba_lamaki_tracked_v1';
-function loadTracked() {
-  try { return JSON.parse(localStorage.getItem(TRACK_KEY) || '[]'); } catch (e) { return []; }
-}
-function saveTracked(arr) {
-  try { localStorage.setItem(TRACK_KEY, JSON.stringify(arr)); return true; } catch (e) { return false; }
-}
-
-function renderTrackingPanel(containerId, opts = {}) {
-  const box = document.getElementById(containerId);
-  const tracked = loadTracked();
-
-  const fixtureOptions = trackableFixtures()
-    .map((g, i) => `<option value="${i}">${fmtDate(g.date_iso)} ${g.time} — ${g.home_team} vs ${g.away_team}</option>`).join('');
-
-  let html = `
-  <div class="card" style="margin-top:20px;">
-    <h3>📝 Dopisz wynik meczu</h3>
-    <div class="small-note" style="margin-top:-6px;margin-bottom:14px;">Jak tylko mecz się odbędzie, wpisz wynik po kwartach — strona sama policzy 1/2 / 2/1 / X i porówna z tym, co przewidziała wcześniej. Dane zapisują się <b>lokalnie w tej przeglądarce</b> (nie wysyłamy ich nigdzie) — jeśli otworzysz plik na innym urządzeniu, historia się nie przeniesie.</div>
-    <div class="controls-row">
-      <div class="field" style="flex:1;min-width:280px;"><label>Mecz</label><select id="track-fixture">${fixtureOptions}</select></div>
-    </div>
-    <div class="controls-row" style="margin-top:10px;">
-      <div class="field"><label>Q1 (gosp:gość)</label><div style="display:flex;gap:4px;"><input type="number" id="track-q1h" style="width:56px;" min="0"><input type="number" id="track-q1a" style="width:56px;" min="0"></div></div>
-      <div class="field"><label>Q2</label><div style="display:flex;gap:4px;"><input type="number" id="track-q2h" style="width:56px;" min="0"><input type="number" id="track-q2a" style="width:56px;" min="0"></div></div>
-      <div class="field"><label>Q3</label><div style="display:flex;gap:4px;"><input type="number" id="track-q3h" style="width:56px;" min="0"><input type="number" id="track-q3a" style="width:56px;" min="0"></div></div>
-      <div class="field"><label>Q4</label><div style="display:flex;gap:4px;"><input type="number" id="track-q4h" style="width:56px;" min="0"><input type="number" id="track-q4a" style="width:56px;" min="0"></div></div>
-      <div class="field"><label>&nbsp;</label><button class="btn" id="track-submit" type="button">Zapisz wynik</button></div>
-    </div>
-    <div id="track-error" class="small-note" style="color:var(--cnone);"></div>
-  </div>
-  <div id="track-results"></div>`;
-  box.innerHTML = html;
-
-  document.getElementById('track-submit').onclick = () => {
-    const idx = +document.getElementById('track-fixture').value;
-    const fixture = trackableFixtures()[idx];
-    const vals = ['q1h', 'q1a', 'q2h', 'q2a', 'q3h', 'q3a', 'q4h', 'q4a'].map(id => +document.getElementById('track-' + id).value);
-    const errBox = document.getElementById('track-error');
-    if (!fixture) { errBox.textContent = 'Wybierz mecz z listy.'; return; }
-    if (vals.some(v => isNaN(v) || v < 0)) { errBox.textContent = 'Uzupełnij wszystkie 8 pól wynikami kwart (liczby ≥ 0).'; return; }
-    errBox.textContent = '';
-    const [q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a] = vals;
-    const cls = classifyQuarters(q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a);
-    const fc = computeForecast(fixture.home_team, fixture.away_team, false, false);
-    const arr = loadTracked();
-    arr.push({
-      date_iso: fixture.date_iso, home_team: fixture.home_team, away_team: fixture.away_team,
-      final_home: q1h + q2h + q3h + q4h, final_away: q1a + q2a + q3a + q4a,
-      classification: cls, pred: { p12: fc.p12, p21: fc.p21, pX: fc.pX },
-      logged_at: new Date().toISOString(),
-    });
-    saveTracked(arr);
-    if (opts.onChange) opts.onChange(); else renderTrackingPanel(containerId, opts);
-  };
-
-  const resBox = document.getElementById('track-results');
-  if (opts.formOnly) { resBox.innerHTML = ''; return; }
-  if (!tracked.length) {
-    resBox.innerHTML = `<div class="empty-state" style="padding:24px;"><div class="ico">◇</div>Brak zapisanych wyników jeszcze — wpisz pierwszy powyżej, gdy tylko rozegracie się mecze.</div>`;
-    return;
-  }
-  const sorted = [...tracked].sort((a, b) => b.date_iso.localeCompare(a.date_iso));
-  const hitCount = tracked.filter(t => isLamak(t.classification)).length;
-  const avgPredictedForHit = tracked.filter(t => isLamak(t.classification)).reduce((s, t) => {
-    const p = t.classification === '1/2' ? t.pred.p12 : t.classification === '2/1' ? t.pred.p21 : t.pred.pX;
-    return s + p;
-  }, 0) / (hitCount || 1);
-
-  resBox.innerHTML = `
-  <div class="grid grid-3" style="margin:16px 0;">
-    <div class="card"><div class="stat"><div class="val">${tracked.length}</div><div class="lbl">Zapisanych meczów</div></div></div>
-    <div class="card"><div class="stat"><div class="val">${hitCount}/${tracked.length}</div><div class="lbl">Faktycznie łamaki (${fmtPct(hitCount, tracked.length)})</div></div></div>
-    <div class="card"><div class="stat"><div class="val">${hitCount ? avgPredictedForHit.toFixed(1) + '%' : '—'}</div><div class="lbl">Śr. przewidziana szansa gdy faktycznie padł łamak</div></div></div>
-  </div>
-  <div class="card">
-    <h3>Historia porównań</h3>
-    <table><thead><tr><th>Data</th><th>Mecz</th><th class="num">Wynik</th><th>Typ</th><th class="num">Prognoza tego typu</th><th></th></tr></thead><tbody>
-    ${sorted.map((t, i) => {
-    const origIdx = tracked.indexOf(t);
-    const predForActual = t.classification === '1/2' ? t.pred.p12 : t.classification === '2/1' ? t.pred.p21 : t.classification === 'X' ? t.pred.pX : null;
-    return `<tr class="${rowClass(t.classification)}">
-        <td class="mono">${fmtDate(t.date_iso)}</td>
-        <td>${t.home_team} — ${t.away_team}</td>
-        <td class="num mono">${t.final_home}:${t.final_away}</td>
-        <td><span class="badge ${badgeClass(t.classification)}">${LABELS[t.classification]}</span></td>
-        <td class="num">${predForActual !== null ? predForActual.toFixed(0) + '%' : `nie przewidziano tego typu (p12 ${t.pred.p12.toFixed(0)}% / p21 ${t.pred.p21.toFixed(0)}% / X ${t.pred.pX.toFixed(0)}%)`}</td>
-        <td><span class="small-note" style="cursor:pointer;text-decoration:underline;" data-remove="${origIdx}">usuń</span></td>
-      </tr>`;
-  }).join('')}
-    </tbody></table>
-    <div class="small-note" style="margin-top:10px;">Im więcej meczów tu wpiszesz, tym lepiej zobaczymy czy model ma jakąkolwiek moc predykcyjną w praktyce — to dokładnie to samo co sekcja "Jak dobry jest ten model?" w zakładce Prognoza meczu, tylko na żywo, na nowym sezonie.</div>
-  </div>`;
-  resBox.querySelectorAll('[data-remove]').forEach(el => {
-    el.onclick = () => { const a = loadTracked(); a.splice(+el.dataset.remove, 1); saveTracked(a); renderTrackingPanel(containerId); };
-  });
-}
-
+// ============================================================
+// SEZON 26/27 — widok terminarza preseason
+// ============================================================
 function renderSezon2627() {
   const el = document.getElementById('view-sezon2627');
   const resMap = {};
@@ -692,7 +600,7 @@ function renderSezon2627() {
   </div>
 
   <div id="s2627-list" class="card"></div>
-  <div class="small-note" style="margin-top:14px;">Rozegrane mecze są zaznaczone kolorem (zielony 1/2 · żółty 2/1 · fioletowy X · czerwony NIC) i mają wynik zamiast prognozy. Szczegóły po kwartach oraz wpisywanie kolejnych wyników → zakładka <b>Wyniki</b>.</div>`;
+  <div class="small-note" style="margin-top:14px;">Rozegrane mecze są zaznaczone kolorem (zielony 1/2 · żółty 2/1 · fioletowy X · czerwony NIC) i mają wynik zamiast prognozy. Wyniki uzupełniają się automatycznie; szczegóły po kwartach → zakładka <b>Wyniki</b>.</div>`;
   el.innerHTML = html;
   el.querySelectorAll('table [data-idx]').forEach(elx => { elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]); });
 
@@ -715,11 +623,11 @@ function renderSezon2627() {
     const topTag = r.sig.tags[0] ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="${r.sig.tags[0].label}">🔍 ${r.sig.tags[0].short}</span>` : '';
     if (r.res) {
       const c = r.res.classification;
-      const half = r.res.halfH !== null ? ` <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span>` : '';
+      const half = ` <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span>`;
       listHtml += `<div class="game-row-nodate ${rowClass(c)}" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;">
         <div class="mono small-note">${r.time}</div>
         <div>${r.home_team} — ${r.away_team} ${b2bNote}</div>
-        <div class="mono" style="font-size:12.5px;"><b>${r.res.final_home}:${r.res.final_away}</b>${half}</div>
+        <div class="mono" style="font-size:12.5px;"><b>${r.res.final_home}:${r.res.final_away}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''}${half}</div>
         <div class="gbadge"><span class="badge ${badgeClass(c)}">${clsLabel(c)}</span></div>
       </div>`;
       return;
@@ -958,7 +866,7 @@ function renderWyniki() {
   }
 
   let html = `<div class="section-title"><h2>Wyniki</h2><div class="rule"></div></div>
-  <div class="section-desc">Rozegrane mecze preseason 26/27 z wynikami po kwartach. Kolory jak w całej aplikacji: zielony 1/2, żółty 2/1, fioletowy X, czerwony NIC. Kolumna „Prognoza” to to, co model dawał przed meczem.</div>
+  <div class="section-desc">Rozegrane mecze preseason 26/27 z wynikami po kwartach — uzupełniane automatycznie każdego ranka z en.24score.com. Kolory jak w całej aplikacji: zielony 1/2, żółty 2/1, fioletowy X, czerwony NIC. Kolumna „Prognoza” to to, co model dawał przed meczem.</div>
   <div class="grid grid-3" style="margin:16px 0;">
     <div class="card"><div class="stat"><div class="val">${res.length}</div><div class="lbl">Rozegranych meczów</div></div></div>
     <div class="card"><div class="stat"><div class="val">${lamaki}/${res.length}</div><div class="lbl">Łamaki (${fmtPct(lamaki, res.length)})</div></div></div>
@@ -970,30 +878,18 @@ function renderWyniki() {
   } else {
     html += `<div class="card" style="overflow-x:auto;"><table><thead><tr>
       <th>Data</th><th>Mecz</th><th class="num">Q1</th><th class="num">Q2</th><th class="num">Q3</th><th class="num">Q4</th>
-      <th class="num">Przerwa</th><th class="num">Wynik</th><th>Typ</th><th>Prognoza</th><th></th></tr></thead><tbody>
-      ${res.map(r => {
-        const qc = i => r.q ? `${r.q[i][0]}:${r.q[i][1]}` : '—';
-        const half = r.halfH !== null ? `${r.halfH}:${r.halfA}` : '—';
-        const rm = r.source === 'local' ? `<span class="small-note" style="cursor:pointer;text-decoration:underline;" data-remove="${r.trackedIdx}">usuń</span>` : '';
-        return `<tr class="${rowClass(r.classification)}">
+      <th class="num">Przerwa</th><th class="num">Wynik</th><th>Typ</th><th>Prognoza</th></tr></thead><tbody>
+      ${res.map(r => `<tr class="${rowClass(r.classification)}">
           <td class="mono">${fmtDate(r.date_iso)}<div class="small-note">${r.time}</div></td>
           <td>${r.home_team} — ${r.away_team}</td>
-          <td class="num mono">${qc(0)}</td><td class="num mono">${qc(1)}</td><td class="num mono">${qc(2)}</td><td class="num mono">${qc(3)}</td>
-          <td class="num mono">${half}</td>
-          <td class="num mono"><b>${r.final_home}:${r.final_away}</b></td>
+          ${r.q.map(x => `<td class="num mono">${x[0]}:${x[1]}</td>`).join('')}
+          <td class="num mono">${r.halfH}:${r.halfA}</td>
+          <td class="num mono"><b>${r.final_home}:${r.final_away}</b>${r.ot ? ' <span class="small-note">OT</span>' : ''}</td>
           <td><span class="badge ${badgeClass(r.classification)}">${clsLabel(r.classification)}</span></td>
-          <td class="small-note">${predText(r)}</td>
-          <td>${rm}</td></tr>`;
-      }).join('')}
+          <td class="small-note">${predText(r)}</td></tr>`).join('')}
     </tbody></table></div>`;
   }
-  html += `<div id="wyniki-tracking"></div>`;
   el.innerHTML = html;
-
-  el.querySelectorAll('[data-remove]').forEach(x => {
-    x.onclick = () => { const a = loadTracked(); a.splice(+x.dataset.remove, 1); saveTracked(a); renderWyniki(); };
-  });
-  renderTrackingPanel('wyniki-tracking', { formOnly: true, onChange: renderWyniki });
 }
 
 // Preseason w zakładce Terminarz (historia) — wybierany w polu „Faza”
@@ -1022,10 +918,10 @@ function renderPreseasonHistory(box) {
       html += `<div class="day-divider" style="cursor:default;"><span class="dname">${fmtDate(r.date_iso)}</span></div>`;
       lastDay = r.date_iso;
     }
-    const half = r.halfH !== null ? `<div class="small-note" style="font-weight:400;">przerwa ${r.halfH}:${r.halfA}</div>` : '';
-    const title = r.q ? r.q.map(x => `${x[0]}:${x[1]}`).join(', ') : '';
+    const half = `<div class="small-note" style="font-weight:400;">przerwa ${r.halfH}:${r.halfA}</div>`;
+    const title = r.q.map(x => `${x[0]}:${x[1]}`).join(', ');
     html += `<div class="game-row-nodate ${rowClass(r.classification)}" style="cursor:default;" title="${title}">
-      <div>${r.home_team}</div><div class="gscore mono">${r.final_home}:${r.final_away}${half}</div><div>${r.away_team}</div>
+      <div>${r.home_team}</div><div class="gscore mono">${r.final_home}:${r.final_away}${r.ot ? ' OT' : ''}${half}</div><div>${r.away_team}</div>
       <div class="gbadge"><span class="badge ${badgeClass(r.classification)}">${clsLabel(r.classification)}</span></div></div>`;
   });
   box.innerHTML = html + `</div>`;
@@ -2228,6 +2124,7 @@ const RENDERERS = {
   analiza: renderAnaliza, prognoza: renderPrognoza
 };
 selectTab('sezon2627');
+refreshPreseasonResults();
 
 // ============================================================
 // GLOBALNE WYSZUKIWANIE DRUŻYNY (dostępne z każdej zakładki)

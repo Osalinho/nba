@@ -31,12 +31,18 @@ def parse_sets_cell(sets_text):
 
 
 def parse_file(filepath, season, stage):
-    """
-    stage: 'regular' | 'playin' | 'playoff'
-    Zwraca listę słowników - jeden mecz na wpis.
-    """
+    """Wczytuje zapisany plik HTML i parsuje go (patrz parse_html)."""
     with open(filepath, encoding='utf-8', errors='ignore') as f:
         content = f.read()
+    return parse_html(content, season, stage)
+
+
+def parse_html(content, season, stage):
+    """
+    content: tekst HTML strony z en.24score.com (tabela meczów)
+    stage: 'regular' | 'playin' | 'playoff' | 'preseason'
+    Zwraca listę słowników - jeden ROZEGRANY mecz na wpis.
+    """
     soup = BeautifulSoup(content, 'html.parser')
     rows = soup.select('table.t1.matches tr.odd, table.t1.matches tr.even')
 

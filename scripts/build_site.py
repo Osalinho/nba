@@ -12,7 +12,15 @@ app_js = (ROOT / 'site' / 'app.js').read_text(encoding='utf-8')
 
 data_json_safe = data_json.replace('</script>', '<\\/script>')
 
-out = template.replace('__DATA_JSON__', data_json_safe).replace('__APP_JS__', app_js)
+# wyniki preseason (małą kopię wbudowujemy na wypadek otwarcia pliku bez internetu;
+# na GitHub Pages strona i tak dociąga świeży data/preseason_results.json)
+pre_path = ROOT / 'data' / 'preseason_results.json'
+pre_json = pre_path.read_text(encoding='utf-8') if pre_path.exists() else '[]'
+pre_json_safe = pre_json.replace('</script>', '<\\/script>')
+
+out = (template.replace('__DATA_JSON__', data_json_safe)
+       .replace('__PRESEASON_JSON__', pre_json_safe)
+       .replace('__APP_JS__', app_js))
 
 out_path = ROOT / 'index.html'
 out_path.write_text(out, encoding='utf-8')

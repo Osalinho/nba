@@ -8,12 +8,14 @@ Wyszukiwarka schematów i zależności dla zdarzeń 1/2, 2/1 i X (remis po 4. kw
 data/
   games_all.json        - surowa baza wszystkich meczów (źródło prawdy)
   enriched_data.json     - wersja przeliczona (streaki, kontekst, klasyfikacje) - to zużywa strona
+  preseason_results.json - wyniki preseason po kwartach (mały plik; strona dociąga go sama po otwarciu)
 site/
   dashboard_template.html - szablon HTML/CSS strony
   app.js                  - cała logika frontendu
 scripts/
   team_mapping.py         - mapowanie skrótów NBA -> nazw w bazie
-  fetch_new_games.py       - pobiera nowe zakończone mecze ze stats.nba.com
+  fetch_new_games.py       - pobiera nowe zakończone mecze sezonu ze stats.nba.com (preseason pomija)
+  fetch_preseason_24score.py - pobiera wyniki PRESEASONU z en.24score.com -> data/preseason_results.json
   enrich.py                - przelicza games_all.json -> enriched_data.json
   build_site.py            - składa finalny index.html
   parse_24score.py         - parser historycznych plików HTML z en.24score.com (użyty jednorazowo do zbudowania bazy 3 sezonów)
@@ -35,11 +37,15 @@ index.html                 - GOTOWA STRONA (to ją otwiera użytkownik / serwuje
 
 ## Jak działa codzienna aktualizacja
 
+0. `fetch_preseason_24score.py` pobiera stronę preseasonu z 24score i dopisuje nowe wyniki do `data/preseason_results.json` (kilka KB). Strona na GitHub Pages dociąga ten plik sama, więc **nie trzeba przebudowywać index.html**. Przy blokadzie/awarii 24score skrypt tylko ostrzega i nic nie psuje.
 1. `fetch_new_games.py` pyta oficjalne stats.nba.com (przez bibliotekę `nba_api`) o mecze z ostatnich 4 dni, żeby nie zgubić niczego nawet jeśli Action raz się nie uda.
 2. Nowe, wcześniej niezapisane mecze (rozpoznawane po dacie + parze drużyn) dopisuje do `data/games_all.json`.
 3. `enrich.py` przelicza całą bazę na nowo (klasyfikacje 1/2/2/1/X, serie, back-to-back, itd.) do `data/enriched_data.json`.
 4. `build_site.py` składa `index.html` na nowo.
+   Kroki 2–4 uruchamiają się **tylko gdy są nowe mecze sezonu** (inaczej codziennie zmieniałby się znacznik czasu w danych i repo puchłoby o ~16 MB dziennie).
 5. Jeśli coś się zmieniło, bot commituje i pushuje zmiany.
+
+**Ważne:** plik workflow MUSI leżeć w `.github/workflows/daily-update.yml` - GitHub ignoruje go w innym miejscu.
 
 ## Ręczna aktualizacja / debugowanie lokalnie
 

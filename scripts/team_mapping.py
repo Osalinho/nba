@@ -62,3 +62,20 @@ def season_id_to_stage_and_season(season_id, game_date):
 
     season_label = f"{year_part}-{str(year_part + 1)[-2:]}"
     return stage, season_label
+
+
+# Strony z terminarzem/preseasonem na 24score używają pełnych nazw, a nasza baza (z plików
+# historycznych) krótszych - ten słownik sprowadza je do wspólnej postaci.
+_24SCORE_ALIASES = {
+    'Golden State Warriors': 'Golden State',
+    'Los Angeles Clippers': 'LA Clippers',
+    'Los Angeles Lakers': 'LA Lakers',
+    'New York Knicks': 'NY Knicks',
+    'Minnesota Timberwolves': 'Minnesota Timb.',
+    'Philadelphia 76ers': 'Philadelphia',
+}
+
+
+def from_24score_name(name):
+    name = name.strip()
+    return _24SCORE_ALIASES.get(name, name)
