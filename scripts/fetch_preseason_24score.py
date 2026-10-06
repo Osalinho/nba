@@ -69,26 +69,43 @@ def clients():
 
 
 def download(url, retries=2):
-    """Pobiera stronę z en.24score.com. Loguje dokładnie co przyszło, żeby dało się zdiagnozować blokadę."""
+    """Pobiera tabelę meczów z en.24score.com.
+
+    Strona zwraca pustą ramkę, a tabelę doładowuje skrypt zapytaniem AJAX:
+      GET /backend/load_page_data.php?data_key=<token z kodu strony>
+    Robimy dokładnie to samo (w tej samej sesji, z ciasteczkami i nagłówkami jak z przeglądarki).
+    Loguje co przyszło, żeby dało się zdiagnozować ewentualną blokadę.
+    """
     parts = urlparse(url)
-    home = f'{parts.scheme}://{parts.netloc}/'
+    origin = f'{parts.scheme}://{parts.netloc}'
+    home = origin + '/'
     for name, sess, send_headers in clients():
         print(f'[{name}] start')
-        try:  # rozgrzewka: strona główna daje ciasteczka, potem wchodzimy "z linku"
-            w = sess.get(home, **({'headers': HEADERS} if send_headers else {}), timeout=30)
+        hdr = (lambda extra: {'headers': {**HEADERS, **extra}}) if send_headers else (lambda extra: {'headers': extra})
+        try:  # rozgrzewka: strona główna daje ciasteczka
+            w = sess.get(home, timeout=30, **hdr({}))
             print(f'  strona główna -> HTTP {w.status_code}')
         except Exception as e:  # noqa: BLE001
             print(f'  strona główna -> błąd: {e}')
         for attempt in range(1, retries + 1):
             try:
-                kw = {'headers': {**HEADERS, 'Referer': home}} if send_headers else {'headers': {'Referer': home}}
-                r = sess.get(url, timeout=30, **kw)
-                ok = r.status_code == 200 and has_matches_table(r.text)
-                print(f'  próba {attempt}/{retries}: HTTP {r.status_code}, bajtów: {len(r.content)}, '
-                      f'server: {r.headers.get("server", "?")}, tabela meczów: {"TAK" if ok else "NIE"}')
-                if ok:
+                r = sess.get(url, timeout=30, **hdr({'Referer': home}))
+                print(f'  próba {attempt}/{retries}: strona HTTP {r.status_code}, bajtów: {len(r.content)}, server: {r.headers.get("server", "?")}')
+                if r.status_code == 200 and has_matches_table(r.text):
+                    print('  tabela meczów jest od razu w odpowiedzi')
                     return r.text
-                print(f'  treść: "{snippet(r.text)}"')
+                m = re.search(r'["\']data_key["\']\s*:\s*["\']([^"\']+)["\']', r.text or '')
+                if r.status_code == 200 and m:
+                    ld = sess.get(origin + '/backend/load_page_data.php', params={'data_key': m.group(1)}, timeout=30,
+                                  **hdr({'Referer': url, 'X-Requested-With': 'XMLHttpRequest',
+                                         'Accept': 'text/html, */*; q=0.01'}))
+                    ok = ld.status_code == 200 and has_matches_table(ld.text)
+                    print(f'  doładowanie tabeli (load_page_data.php): HTTP {ld.status_code}, bajtów: {len(ld.content)}, tabela meczów: {"TAK" if ok else "NIE"}')
+                    if ok:
+                        return ld.text
+                    print(f'  treść: "{snippet(ld.text)}"')
+                else:
+                    print(f'  nie znaleziono data_key w kodzie strony; treść: "{snippet(r.text)}"')
             except Exception as e:  # noqa: BLE001
                 print(f'  próba {attempt}/{retries}: błąd sieci: {e}')
             time.sleep(3 * attempt)
