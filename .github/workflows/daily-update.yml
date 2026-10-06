@@ -5,6 +5,8 @@ on:
     # 6:00 UTC = 7:00 lub 8:00 czasu polskiego (zależnie od czasu letniego/zimowego)
     - cron: '0 6 * * *'
   workflow_dispatch: {}  # pozwala też odpalić ręcznie z zakładki Actions na GitHubie
+  push:
+    paths: ['data/inbox/**']  # plan B: wrzucenie zapisanej strony od razu uruchamia przebieg
 
 permissions:
   contents: write
