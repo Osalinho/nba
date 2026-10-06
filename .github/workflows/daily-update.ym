@@ -1,0 +1,56 @@
+name: Codzienna aktualizacja NBA Łamaki
+
+on:
+  schedule:
+    # 6:00 UTC = 7:00 lub 8:00 czasu polskiego (zależnie od czasu letniego/zimowego)
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}  # pozwala też odpalić ręcznie z zakładki Actions na GitHubie
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalacja zależności
+        run: pip install -r requirements.txt
+
+      # --- PRESEASON: lekki plik JSON (kilka KB), strona dociąga go sama - bez przebudowy index.html ---
+      - name: Pobierz wyniki preseason z 24score
+        run: python scripts/fetch_preseason_24score.py
+
+      # --- SEZON: nowe mecze z stats.nba.com (preseason jest tu pomijany) ---
+      - name: Pobierz nowe mecze
+        run: python scripts/fetch_new_games.py --days-back 4
+
+      # enrich.py zapisuje w danych bieżący znacznik czasu, więc uruchamiamy go TYLKO gdy są nowe mecze.
+      # Inaczej każdy dzień = zmiana ~16 MB (enriched_data.json + index.html) i puchnące repo.
+      - name: Przelicz dane i zbuduj stronę (tylko gdy są nowe mecze)
+        run: |
+          if [ "$(cat data/.last_update_had_changes 2>/dev/null)" = "1" ]; then
+            python scripts/enrich.py
+            python scripts/build_site.py
+          else
+            echo "Brak nowych meczów sezonu - pomijam przebudowę strony."
+          fi
+
+      - name: Commit i push jeśli są zmiany
+        run: |
+          git config user.name "nba-lamaki-bot"
+          git config user.email "actions@github.com"
+          git add data/preseason_results.json data/games_all.json data/enriched_data.json index.html
+          if git diff --cached --quiet; then
+            echo "Brak zmian - nic do commitowania."
+          else
+            git commit -m "Automatyczna aktualizacja danych $(date -u +%Y-%m-%d)"
+            git push
+          fi
