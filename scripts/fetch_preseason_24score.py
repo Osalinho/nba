@@ -12,15 +12,25 @@ Użycie:
     python scripts/fetch_preseason_24score.py                 # pobiera ze strony
     python scripts/fetch_preseason_24score.py --file strona.html   # z zapisanego pliku HTML
     python scripts/fetch_preseason_24score.py --url <inny adres>   # np. inny turniej / sezon
+
+Plan B (gdyby 24score blokowało serwery GitHuba): zapisz stronę w przeglądarce (Ctrl+S, "Strona internetowa,
+HTML") i wrzuć jako data/inbox/preseason.html - skrypt użyje jej, gdy pobranie ze strony się nie powiedzie.
 """
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
+
+try:  # opcjonalnie: odcisk TLS prawdziwej Chrome - przechodzi tam, gdzie zwykłe `requests` dostaje 403
+    from curl_cffi import requests as cffi_requests
+except Exception:  # noqa: BLE001
+    cffi_requests = None
 
 sys.path.insert(0, str(Path(__file__).parent))
 from parse_24score import parse_html
@@ -29,15 +39,14 @@ from team_mapping import from_24score_name
 ROOT = Path(__file__).parent.parent
 OUT_PATH = ROOT / 'data' / 'preseason_results.json'
 
-URLS = [
-    'https://en.24score.com/basketball/usa/nba_preseason/2026/regular_season/fixtures/',
-    'https://24score.pro/basketball/usa/nba_preseason/2026/regular_season/fixtures',  # lustro
-]
+URL = 'https://en.24score.com/basketball/usa/nba_preseason/2026/regular_season/fixtures/'
+INBOX_PATH = ROOT / 'data' / 'inbox' / 'preseason.html'  # plan B: ręcznie zapisana strona (patrz README)
 HEADERS = {
     'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
                    '(KHTML, like Gecko) Chrome/124.0 Safari/537.36'),
-    'Accept': 'text/html,application/xhtml+xml',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
+    'Upgrade-Insecure-Requests': '1',
 }
 
 
@@ -45,18 +54,44 @@ def has_matches_table(html):
     return BeautifulSoup(html, 'html.parser').select_one('table.t1.matches') is not None
 
 
-def download(urls, retries=3):
-    for url in urls:
+def snippet(text, n=160):
+    return re.sub(r'\s+', ' ', BeautifulSoup(text or '', 'html.parser').get_text(' '))[:n]
+
+
+def clients():
+    out = []
+    if cffi_requests is not None:
+        out.append(('curl_cffi (Chrome)', cffi_requests.Session(impersonate='chrome'), False))
+    sess = requests.Session()
+    sess.headers.update(HEADERS)
+    out.append(('requests', sess, True))
+    return out
+
+
+def download(url, retries=2):
+    """Pobiera stronę z en.24score.com. Loguje dokładnie co przyszło, żeby dało się zdiagnozować blokadę."""
+    parts = urlparse(url)
+    home = f'{parts.scheme}://{parts.netloc}/'
+    for name, sess, send_headers in clients():
+        print(f'[{name}] start')
+        try:  # rozgrzewka: strona główna daje ciasteczka, potem wchodzimy "z linku"
+            w = sess.get(home, **({'headers': HEADERS} if send_headers else {}), timeout=30)
+            print(f'  strona główna -> HTTP {w.status_code}')
+        except Exception as e:  # noqa: BLE001
+            print(f'  strona główna -> błąd: {e}')
         for attempt in range(1, retries + 1):
             try:
-                r = requests.get(url, headers=HEADERS, timeout=30)
-                if r.status_code == 200 and has_matches_table(r.text):
-                    print(f'Pobrano: {url}')
+                kw = {'headers': {**HEADERS, 'Referer': home}} if send_headers else {'headers': {'Referer': home}}
+                r = sess.get(url, timeout=30, **kw)
+                ok = r.status_code == 200 and has_matches_table(r.text)
+                print(f'  próba {attempt}/{retries}: HTTP {r.status_code}, bajtów: {len(r.content)}, '
+                      f'server: {r.headers.get("server", "?")}, tabela meczów: {"TAK" if ok else "NIE"}')
+                if ok:
                     return r.text
-                print(f'  {url} -> HTTP {r.status_code}, tabela meczów: {has_matches_table(r.text) if r.status_code == 200 else "-"} (próba {attempt}/{retries})')
-            except requests.RequestException as e:
-                print(f'  {url} -> błąd sieci: {e} (próba {attempt}/{retries})')
-            time.sleep(2 * attempt)
+                print(f'  treść: "{snippet(r.text)}"')
+            except Exception as e:  # noqa: BLE001
+                print(f'  próba {attempt}/{retries}: błąd sieci: {e}')
+            time.sleep(3 * attempt)
     return None
 
 
@@ -82,7 +117,7 @@ def dump(entries):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--file', help='zamiast pobierać - wczytaj zapisany plik HTML')
-    ap.add_argument('--url', help='inny adres strony z meczami (domyślnie preseason NBA 2026)')
+    ap.add_argument('--url', default=URL, help='adres strony z meczami (domyślnie en.24score.com, preseason NBA 2026)')
     ap.add_argument('--out', default=str(OUT_PATH))
     args = ap.parse_args()
     out_path = Path(args.out)
@@ -90,9 +125,12 @@ def main():
     if args.file:
         html = Path(args.file).read_text(encoding='utf-8', errors='ignore')
     else:
-        html = download([args.url] if args.url else URLS)
+        html = download(args.url)
+        if not html and INBOX_PATH.exists():
+            print(f'Plan B: używam ręcznie zapisanej strony {INBOX_PATH.relative_to(ROOT)}')
+            html = INBOX_PATH.read_text(encoding='utf-8', errors='ignore')
     if not html:
-        print('::warning::Nie udało się pobrać strony 24score - dane bez zmian.')
+        print('::warning::Nie udało się pobrać strony 24score (szczegóły w logu powyżej) - dane bez zmian.')
         return 0
 
     games = parse_html(html, '2026-27', 'preseason')
