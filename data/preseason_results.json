@@ -4,5 +4,6 @@
 {"date":"04.10.2026","home_team":"Toronto Raptors","away_team":"Miami Heat","q":[[23,41],[32,35],[25,19],[25,34]],"ot":[],"final_home":105,"final_away":129,"id":"368972"},
 {"date":"06.10.2026","home_team":"Philadelphia","away_team":"NY Knicks","q":[[32,33],[26,39],[21,21],[18,27]],"ot":[],"final_home":97,"final_away":120,"id":"368977"},
 {"date":"06.10.2026","home_team":"Detroit Pistons","away_team":"Phoenix Suns","q":[[35,21],[33,29],[16,34],[23,25]],"ot":[],"final_home":107,"final_away":109,"id":"368976"},
-{"date":"06.10.2026","home_team":"Atlanta Hawks","away_team":"Memphis Grizzlies","q":[[32,35],[49,26],[29,37],[22,25]],"ot":[],"final_home":132,"final_away":123,"id":"368975"}
+{"date":"06.10.2026","home_team":"Atlanta Hawks","away_team":"Memphis Grizzlies","q":[[32,35],[49,26],[29,37],[22,25]],"ot":[],"final_home":132,"final_away":123,"id":"368975"},
+{"date":"07.10.2026","home_team":"Charlotte Hornets","away_team":"Brooklyn Nets","q":[[33,31],[23,21],[36,21],[32,17]],"ot":[],"final_home":124,"final_away":90,"id":"368980"}
 ]
