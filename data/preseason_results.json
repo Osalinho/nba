@@ -7,5 +7,13 @@
 {"date":"06.10.2026","home_team":"Atlanta Hawks","away_team":"Memphis Grizzlies","q":[[32,35],[49,26],[29,37],[22,25]],"ot":[],"final_home":132,"final_away":123,"id":"368975"},
 {"date":"07.10.2026","home_team":"Charlotte Hornets","away_team":"Brooklyn Nets","q":[[33,31],[23,21],[36,21],[32,17]],"ot":[],"final_home":124,"final_away":90,"id":"368980"},
 {"date":"06.10.2026","home_team":"Sacramento Kings","away_team":"LA Lakers","q":[[28,36],[19,37],[30,26],[26,28]],"ot":[],"final_home":103,"final_away":127,"id":"368979"},
-{"date":"06.10.2026","home_team":"Milwaukee Bucks","away_team":"Minnesota Timb.","q":[[20,31],[28,29],[28,21],[21,35]],"ot":[],"final_home":97,"final_away":116,"id":"368978"}
+{"date":"06.10.2026","home_team":"Milwaukee Bucks","away_team":"Minnesota Timb.","q":[[20,31],[28,29],[28,21],[21,35]],"ot":[],"final_home":97,"final_away":116,"id":"368978"},
+{"date":"08.10.2026","home_team":"Portland Trail Blazers","away_team":"Golden State","q":[[31,36],[19,21],[36,29],[32,37]],"ot":[],"final_home":118,"final_away":123,"id":"368988"},
+{"date":"08.10.2026","home_team":"Oklahoma City Thunder","away_team":"Milwaukee Bucks","q":[[44,35],[38,29],[20,33],[24,31]],"ot":[],"final_home":126,"final_away":128,"id":"368987"},
+{"date":"08.10.2026","home_team":"Memphis Grizzlies","away_team":"Orlando Magic","q":[[26,36],[35,28],[26,30],[31,28]],"ot":[],"final_home":118,"final_away":122,"id":"368986"},
+{"date":"08.10.2026","home_team":"Chicago Bulls","away_team":"Phoenix Suns","q":[[29,40],[33,24],[31,26],[31,27]],"ot":[],"final_home":124,"final_away":117,"id":"368985"},
+{"date":"08.10.2026","home_team":"Indiana Pacers","away_team":"Minnesota Timb.","q":[[27,32],[38,29],[26,38],[21,24]],"ot":[],"final_home":112,"final_away":123,"id":"368984"},
+{"date":"07.10.2026","home_team":"Golden State","away_team":"LA Lakers","q":[[45,31],[36,22],[15,22],[28,23]],"ot":[],"final_home":124,"final_away":98,"id":"368983"},
+{"date":"07.10.2026","home_team":"Utah Jazz","away_team":"Denver Nuggets","q":[[31,24],[28,41],[22,30],[25,22]],"ot":[],"final_home":106,"final_away":117,"id":"368982"},
+{"date":"07.10.2026","home_team":"Oklahoma City Thunder","away_team":"New Orleans Pelicans","q":[[34,28],[33,24],[26,38],[17,26]],"ot":[],"final_home":110,"final_away":116,"id":"368981"}
 ]
