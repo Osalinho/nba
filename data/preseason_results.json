@@ -24,5 +24,15 @@
 {"date":"09.10.2026","home_team":"Dallas Mavericks","away_team":"Houston Rockets","q":[[27,19],[38,26],[34,35],[36,37]],"ot":[],"final_home":135,"final_away":117,"id":"368995"},
 {"date":"11.10.2026","home_team":"Washington Wizards","away_team":"Detroit Pistons","q":[[20,40],[30,16],[28,24],[20,18]],"ot":[[10,16]],"final_home":108,"final_away":114,"id":"368999"},
 {"date":"11.10.2026","home_team":"Indiana Pacers","away_team":"Atlanta Hawks","q":[[31,32],[31,28],[34,26],[23,31]],"ot":[],"final_home":119,"final_away":117,"id":"368998"},
-{"date":"11.10.2026","home_team":"Toronto Raptors","away_team":"LA Clippers","q":[[18,24],[27,33],[27,32],[34,25]],"ot":[],"final_home":106,"final_away":114,"id":"368997"}
+{"date":"11.10.2026","home_team":"Toronto Raptors","away_team":"LA Clippers","q":[[18,24],[27,33],[27,32],[34,25]],"ot":[],"final_home":106,"final_away":114,"id":"368997"},
+{"date":"12.10.2026","home_team":"Denver Nuggets","away_team":"Chicago Bulls","q":[[27,29],[41,30],[26,40],[34,34]],"ot":[],"final_home":128,"final_away":133,"id":"369007"},
+{"date":"12.10.2026","home_team":"Charlotte Hornets","away_team":"Milwaukee Bucks","q":[[26,29],[19,31],[22,27],[23,18]],"ot":[],"final_home":90,"final_away":105,"id":"369006"},
+{"date":"12.10.2026","home_team":"Cleveland Cavaliers","away_team":"Orlando Magic","q":[[28,32],[22,29],[25,29],[30,29]],"ot":[],"final_home":105,"final_away":119,"id":"369005"},
+{"date":"11.10.2026","home_team":"Houston Rockets","away_team":"Dallas Mavericks","q":[[28,27],[30,24],[37,34],[37,30]],"ot":[],"final_home":132,"final_away":115,"id":"369004"},
+{"date":"11.10.2026","home_team":"Phoenix Suns","away_team":"San Antonio Spurs","q":[[35,25],[23,26],[27,22],[17,25]],"ot":[],"final_home":102,"final_away":98,"id":"369003"},
+{"date":"11.10.2026","home_team":"Golden State","away_team":"Sacramento Kings","q":[[24,25],[37,31],[28,25],[22,25]],"ot":[],"final_home":111,"final_away":106,"id":"369002"},
+{"date":"11.10.2026","home_team":"Miami Heat","away_team":"Minnesota Timb.","q":[[23,24],[33,36],[28,31],[40,34]],"ot":[],"final_home":124,"final_away":125,"id":"369001"},
+{"date":"11.10.2026","home_team":"Boston Celtics","away_team":"Philadelphia","q":[[24,20],[39,22],[41,27],[40,37]],"ot":[],"final_home":144,"final_away":106,"id":"369000"},
+{"date":"10.10.2026","home_team":"Chicago Bulls","away_team":"Memphis Grizzlies","q":[[27,30],[23,30],[32,25],[18,19]],"ot":[],"final_home":100,"final_away":104,"id":"368996"},
+{"date":"09.10.2026","home_team":"San Antonio Spurs","away_team":"Atlanta Hawks","q":[[39,20],[30,42],[26,31],[21,30]],"ot":[],"final_home":116,"final_away":123,"id":"368993"}
 ]
