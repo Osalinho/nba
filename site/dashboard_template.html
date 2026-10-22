@@ -400,10 +400,10 @@ tr.row-c12 td, tr.row-c21 td, tr.row-cx td, tr.row-cnone td{border-bottom-color:
 }
 .modal-close{
   position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;
-  background:rgba(255,255,255,0.9);border:1px solid var(--line);cursor:pointer;font-size:16px;
+  background:var(--panel);color:var(--ink);border:1px solid var(--line);cursor:pointer;font-size:16px;
   display:flex;align-items:center;justify-content:center;z-index:2;
 }
-.modal-close:hover{background:var(--panel-alt);}
+.modal-close:hover{background:var(--orange);color:#17191C;}
 .modal-header{
   background:var(--panel-alt);color:var(--ink);border-radius:12px 12px 0 0;padding:26px 28px 22px;
   border-top:5px solid var(--line);
@@ -462,6 +462,29 @@ main{overflow-x:hidden;}
   main{padding:16px 14px 60px;}
 }
 
+
+/* ---- karty faktów (teczka meczu) ---- */
+.fc-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.fc-sum div{background:var(--panel-alt);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;}
+.fc-sum b{font-family:'IBM Plex Mono',monospace;font-size:20px;}.fc-sum span{font-size:11px;color:var(--ink-soft);}
+.fc-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px;}
+.fc-tab{flex:none;background:var(--panel-alt);border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+.fc-tab small{margin-left:6px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
+.fc-tab.on{background:var(--orange);border-color:var(--orange);color:#17191C;}.fc-tab.on small{color:#3a2a14;}
+.fc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+@media(max-width:700px){.fc-grid{grid-template-columns:1fr;}.fc-sum{grid-template-columns:repeat(2,1fr);}}
+.fc{background:var(--panel-alt);border:1px solid var(--line);border-radius:10px;padding:12px 14px;border-left:4px solid var(--line);}
+.fc.hot{border-left-color:var(--orange);background:rgba(255,138,31,.08);}.fc.cold{border-left-color:var(--blue);}.fc.kx.hot{border-left-color:var(--cx);background:var(--cx-soft);}
+.fc-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;}
+.fc-label{font-size:12.5px;line-height:1.35;color:var(--ink);}.fc-ico{font-size:15px;}
+.fc-main{display:flex;align-items:baseline;gap:8px;margin:6px 0 4px;}
+.fc-main b{font-family:'IBM Plex Mono',monospace;font-size:26px;}.fc-main span{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:13px;}.fc-main em{font-style:normal;font-size:11px;color:var(--ink-soft);}
+.fc-bar{position:relative;height:7px;border-radius:4px;background:var(--line);margin:4px 0 6px;}
+.fc-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--ink-soft);}
+.fc.hot .fc-bar i{background:var(--orange);}.fc.cold .fc-bar i{background:var(--blue);}
+.fc-bar u{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.75;text-decoration:none;}
+.fc-sub{font-size:11.5px;color:var(--ink-soft);}
+.fc-detail{margin-top:8px;font-size:11.5px;line-height:1.9;color:var(--ink-soft);}
 /* ---- teczka meczu ---- */
 .gc{display:inline-block;min-width:26px;text-align:center;padding:1px 6px;border-radius:5px;font-size:11px;font-family:'IBM Plex Mono',monospace;margin:1px 2px 1px 0;}
 .gc.c12{background:var(--c12-soft);color:var(--c12);}.gc.c21{background:var(--c21-soft);color:var(--c21);}.gc.cx{background:var(--cx-soft);color:var(--cx);}.gc.cn{background:var(--panel-alt);color:var(--ink-soft);}
@@ -577,11 +600,27 @@ main{overflow-x:hidden;}
 </div>
 
 
-<script id="nba-data" type="application/json">__DATA_JSON__</script>
+<script id="nba-data-gz" type="application/octet-stream">__DATA_GZ__</script>
 <script id="preseason-data" type="application/json">__PRESEASON_JSON__</script>
 <script id="fixtures-data" type="application/json">__FIXTURES_JSON__</script>
-<script>
+<script id="app-src" type="text/plain">
 __APP_JS__
 </script>
+<script>
+(async function () {
+  try {
+    if (typeof DecompressionStream === 'undefined') throw new Error('Ta przeglądarka jest za stara (brak DecompressionStream) — zaktualizuj Chrome/Safari/Firefox.');
+    const b64 = document.getElementById('nba-data-gz').textContent.trim();
+    const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    window.__NBA_RAW = await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    const s = document.createElement('script');
+    s.textContent = document.getElementById('app-src').textContent;
+    document.body.appendChild(s);
+  } catch (e) {
+    document.querySelector('main').innerHTML = '<div style="padding:40px;color:#F87171">Nie udało się wczytać danych: ' + e.message + '</div>';
+  }
+})();
+</script>
+
 </body>
 </html>
