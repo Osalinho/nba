@@ -18,7 +18,12 @@ pre_path = ROOT / 'data' / 'preseason_results.json'
 pre_json = pre_path.read_text(encoding='utf-8') if pre_path.exists() else '[]'
 pre_json_safe = pre_json.replace('</script>', '<\\/script>')
 
+fx_path = ROOT / 'data' / 'fixtures_2026_27.json'
+fx_json = fx_path.read_text(encoding='utf-8') if fx_path.exists() else '[]'
+fx_json_safe = fx_json.replace('</script>', '<\\/script>')
+
 out = (template.replace('__DATA_JSON__', data_json_safe)
+       .replace('__FIXTURES_JSON__', fx_json_safe)
        .replace('__PRESEASON_JSON__', pre_json_safe)
        .replace('__APP_JS__', app_js))
 
