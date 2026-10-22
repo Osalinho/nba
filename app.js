@@ -4,7 +4,7 @@
 const RAW = JSON.parse(document.getElementById('nba-data').textContent);
 const ALL_GAMES = RAW.games.slice().sort((a, b) => a.date_iso.localeCompare(b.date_iso));
 const TEAMS = RAW.teams;
-const SEASONS = ['2023-24', '2024-25', '2025-26'];
+const SEASONS = ['2023-24', '2024-25', '2025-26', '2026-27'];
 
 const isLamak = c => c === '1/2' || c === '2/1' || c === 'X';
 const LABELS = { '1/2': '1/2', '2/1': '2/1', 'X': 'X', 'brak_lamaka': '—', 'remis_do_przerwy_bez_OT': '—' };
@@ -110,14 +110,15 @@ rebuildAll();
 // TABS
 // ============================================================
 const TABS = [
-  { id: 'sezon2627', label: 'Sezon 26/27' },
-  { id: 'wyniki', label: 'Wyniki' },
-  { id: 'terminarz', label: 'Terminarz (historia)' },
-  { id: 'druzyny', label: 'Drużyny' },
-  { id: 'h2h', label: 'H2H' },
-  { id: 'analiza', label: 'Zależności i wzorce' },
-  { id: 'prognoza', label: 'Prognoza meczu' },
-  { id: 'wnioski', label: 'Wnioski' },
+  { id: 'sezon2627', label: '🔥 Sezon 26/27' },
+  { id: 'zakonczone', label: '✅ Zakończone' },
+  { id: 'terminarz', label: '🗓 Terminarz (historia)' },
+  { id: 'druzyny', label: '🏀 Drużyny' },
+  { id: 'h2h', label: '⚔ H2H' },
+  { id: 'analiza', label: '🔎 Zależności i wzorce' },
+  { id: 'prognoza', label: '🎯 Prognoza meczu' },
+  { id: 'wnioski', label: '💡 Wnioski' },
+  { id: 'wyniki', label: '🧪 Preseason' },
 ];
 const tabsNav = document.getElementById('tabs-nav');
 TABS.forEach((t, i) => {
@@ -554,99 +555,382 @@ function classifyQuarters(q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a) {
 }
 
 // ============================================================
-// SEZON 26/27 — widok terminarza preseason
+// SEZON 26/27 — terminarz sezonu zasadniczego + „teczka meczu” (fakty zamiast procentów)
 // ============================================================
+const FIXTURES = (() => { try { return JSON.parse(document.getElementById('fixtures-data').textContent || '[]'); } catch (e) { return []; } })();
+const DOW_SHORT = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'];
+const DOW_FULL = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
+const CUR_SEASON = '2026-27';
+let s27Day = null, s27Filter = 'all', zkFilter = 'all';
+let S27 = null, DOS = null;
+function localIso(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function isoPlus(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return localIso(d); }
+function seasonDay(iso) { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const st = new Date(`${m >= 8 ? y : y - 1}-10-01T12:00:00`); return Math.round((new Date(iso + 'T12:00:00') - st) / 864e5); }
+function dayDist(a, b) { return Math.abs(seasonDay(a) - seasonDay(b)); }
+
+// ---------- 1. Terminarz + wyniki ----------
+function s27Build() {
+  if (S27) return S27;
+  const played = ALL_GAMES.filter(g => g.season === CUR_SEASON && g.stage === 'regular');
+  const busy = new Set();
+  FIXTURES.forEach(f => { busy.add(f.h + '|' + f.d); busy.add(f.a + '|' + f.d); });
+  const used = new Set();
+  const days = [...new Set(FIXTURES.map(f => f.d))].sort();
+  const cnt = {};
+  const rows = FIXTURES.map((f, i) => {
+    const known = TEAMS.includes(f.h) && TEAMS.includes(f.a);
+    let res = null, synth = false;
+    const g = played.find(p => !used.has(p.game_id) && p.home_team === f.h && p.away_team === f.a && Math.abs((new Date(p.date_iso) - new Date(f.d)) / 864e5) <= 1);
+    if (g) {
+      used.add(g.game_id);
+      res = { fh: g.final_home, fa: g.final_away, ot: g.num_ot, halfH: g.half_home, halfA: g.half_away, cls: g.classification,
+        q: [[g.q1_home, g.q1_away], [g.q2_home, g.q2_away], [g.q3_home, g.q3_away], [g.q4_home, g.q4_away]] };
+    } else if (f.q) {
+      const q = f.q, hh = q[0][0] + q[1][0], ha = q[0][1] + q[1][1];
+      const rh = hh + q[2][0] + q[3][0], ra = ha + q[2][1] + q[3][1], ot = f.ot || [];
+      res = { fh: rh + ot.reduce((a, x) => a + x[0], 0), fa: ra + ot.reduce((a, x) => a + x[1], 0), ot: ot.length, halfH: hh, halfA: ha, q,
+        cls: classifyQuarters(q[0][0], q[0][1], q[1][0], q[1][1], q[2][0], q[2][1], q[3][0], q[3][1]) };
+      synth = true;
+    }
+    if (res && !isLamak(res.cls)) res.cls = 'brak_lamaka';
+    const p1 = isoPlus(f.d, -1), p2 = isoPlus(f.d, -2), p3 = isoPlus(f.d, -3);
+    const t3 = t => busy.has(t + '|' + p1) && [p2, p3].some(x => busy.has(t + '|' + x));
+    const ctx = { b2bH: busy.has(f.h + '|' + p1), b2bA: busy.has(f.a + '|' + p1), t3H: t3(f.h), t3A: t3(f.a) };
+    const nH = (cnt[f.h] = (cnt[f.h] || 0) + 1), nA = (cnt[f.a] = (cnt[f.a] || 0) + 1);
+    return { i, f, known, res, synth, ctx, k: days.indexOf(f.d) + 1, nH, nA, dos: null };
+  });
+  const byDay = {};
+  rows.forEach(r => { (byDay[r.f.d] = byDay[r.f.d] || []).push(r); });
+  S27 = { rows, byDay, days };
+  return S27;
+}
+
+// ---------- 2. Indeks historii do „teczek” ----------
+function binomTail(k, n, p, upper) {
+  if (!n) return 1;
+  p = Math.min(0.999, Math.max(0.001, p));
+  const lp = Math.log(p), lq = Math.log(1 - p);
+  let lc = 0, s = 0;
+  for (let i = 0; i <= n; i++) {
+    if (i > 0) lc += Math.log((n - i + 1) / i);
+    if (upper ? i >= k : i <= k) s += Math.exp(lc + i * lp + (n - i) * lq);
+  }
+  return Math.min(1, s);
+}
+function mkFact(scope, short, label, hits, n, base, detail, kind = 'L') {
+  const rate = n ? hits / n : 0;
+  const up = binomTail(hits, n, base, true), lo = binomTail(hits, n, base, false);
+  let dir = null;
+  if (n >= 3 && hits >= 2 && rate - base >= 0.15 && up <= 0.08) dir = 'hot';
+  else if (n >= 5 && base - rate >= 0.12 && lo <= 0.06) dir = 'cold';
+  return { scope, short, label, hits, n, base, rate, p: dir === 'cold' ? lo : up, dir, detail: detail || '', kind };
+}
+function gchips(list) {
+  return list.map(g => `<span class="gc ${g.l ? (g.cls === '1/2' ? 'c12' : g.cls === '2/1' ? 'c21' : 'cx') : 'cn'}" title="${g.season} · ${fmtDate(g.d)} · ${g.opp ? 'vs ' + g.opp : g.h + ' – ' + g.a}">${g.l ? g.cls : '–'}</span>`).join('');
+}
+
+function dosIndex() {
+  if (DOS) return DOS;
+  const D = s27Build();
+  const kMap = computeKolejkaMap('regular').map;
+  const recs = [];
+  ALL_GAMES.filter(g => g.stage === 'regular').forEach(g => {
+    let k = kMap[g.game_id] || 0;
+    if (g.season === CUR_SEASON) k = D.days.indexOf(D.days.find(x => x >= g.date_iso)) + 1;
+    recs.push({ d: g.date_iso, season: g.season, h: g.home_team, a: g.away_team, cls: g.classification, k, dow: g.day_of_week,
+      hb2b: !!g.home_ctx.back_to_back, ab2b: !!g.away_ctx.back_to_back, h3: !!g.home_ctx.three_in_four_days, a3: !!g.away_ctx.three_in_four_days, hw: g.winner === 'home' });
+  });
+  D.rows.filter(r => r.res && r.synth).forEach(r => {
+    recs.push({ d: r.f.d, season: CUR_SEASON, h: r.f.h, a: r.f.a, cls: r.res.cls, k: r.k, dow: DOW_FULL[new Date(r.f.d + 'T12:00:00').getDay()],
+      hb2b: r.ctx.b2bH, ab2b: r.ctx.b2bA, h3: r.ctx.t3H, a3: r.ctx.t3A, hw: r.res.fh > r.res.fa });
+  });
+  recs.sort((a, b) => a.d.localeCompare(b.d));
+  recs.forEach(r => { r.l = isLamak(r.cls); r.x = r.cls === 'X'; });
+  const TG = {}, cs = {};
+  recs.forEach(r => [[r.h, true, r.hb2b, r.h3, r.hw, r.a], [r.a, false, r.ab2b, r.a3, !r.hw, r.h]].forEach(([t, home, b2b, t3, won, opp]) => {
+    const key = t + '|' + r.season, n = (cs[key] = (cs[key] || 0) + 1);
+    const list = TG[t] = TG[t] || [];
+    const pv = list.length && list[list.length - 1].season === r.season ? list[list.length - 1] : null;
+    list.push({ d: r.d, season: r.season, k: r.k, dow: r.dow, l: r.l, x: r.x, cls: r.cls, home, opp, n, b2b, t3, w: won,
+      prevL: pv ? pv.l : null, ws: pv && pv.w ? pv.ws + 1 : 0, ls: pv && !pv.w ? pv.ls + 1 : 0 });
+  }));
+  const BL = recs.filter(r => r.l).length / recs.length, BX = recs.filter(r => r.x).length / recs.length;
+  DOS = { recs, TG, BL, BX, slots: computeDaySlots('regular').slots };
+  return DOS;
+}
+
+function dayFacts(d, K, N) {
+  const I = dosIndex(), D = s27Build();
+  const dow = DOW_FULL[new Date(d + 'T12:00:00').getDay()];
+  const prior = I.recs.filter(r => r.d < d && r.season !== CUR_SEASON);
+  const out = [], L = a => a.filter(r => r.l).length;
+  const kk = prior.filter(r => r.k === K);
+  if (kk.length) {
+    const per = [...new Set(kk.map(r => r.season))].map(s => { const a = kk.filter(r => r.season === s); return `${s.slice(2)}: <b>${L(a)}/${a.length}</b>`; }).join(' · ');
+    out.push(mkFact('day', 'kolejka', `Kolejka ${K} ligi w poprzednich sezonach`, L(kk), kk.length, I.BL, per));
+    out.push(mkFact('day', 'kolejka X', `Dogrywki (X) w kolejce ${K}`, kk.filter(r => r.x).length, kk.length, I.BX, '', 'X'));
+  }
+  const wd = prior.filter(r => r.dow === dow);
+  out.push(mkFact('day', 'dzień tyg.', `${dow} — cała liga`, L(wd), wd.length, I.BL));
+  const cal = prior.filter(r => dayDist(r.d, d) <= 1);
+  if (cal.length) out.push(mkFact('day', 'data', `Ta data kalendarzowa ±1 dzień`, L(cal), cal.length, I.BL, [...new Set(cal.map(r => r.season))].map(s => { const a = cal.filter(r => r.season === s); return `${s.slice(2)}: <b>${L(a)}/${a.length}</b>`; }).join(' · ')));
+  const sz = I.slots.filter(s => s.season !== CUR_SEASON && Math.abs(s.n - N) <= 1);
+  if (sz.length) out.push(mkFact('day', 'wielkość', `Kolejki z ${N}±1 meczami`, sz.reduce((a, s) => a + s.l, 0), sz.reduce((a, s) => a + s.n, 0), I.BL, `${sz.length} takich kolejek w historii`));
+  const yd = D.byDay[D.days[D.days.indexOf(d) - 1]];
+  if (yd) { const pr = yd.filter(r => r.res); if (pr.length >= 3) out.push(mkFact('day', 'wczoraj', `Poprzednia kolejka (ten sezon)`, pr.filter(r => isLamak(r.res.cls)).length, pr.length, I.BL, 'ile łamaków było dzień wcześniej')); }
+  return out;
+}
+
+function teamFacts(side, T, isHome, n, K, d, b2b, t3) {
+  const I = dosIndex();
+  const all = (I.TG[T] || []).filter(g => g.d < d);
+  if (all.length < 5) return [];
+  const prev = all.filter(g => g.season !== CUR_SEASON);
+  const base = all.filter(g => g.l).length / all.length;
+  const dow = DOW_FULL[new Date(d + 'T12:00:00').getDay()];
+  const nm = T.split(' ').pop(), sc = side, f = [];
+  const L = a => a.filter(g => g.l).length;
+  const last5 = all.slice(-5);
+  f.push(mkFact(sc, 'seria', `${nm}: ostatnie 5 meczów`, L(last5), 5, base, gchips(last5)));
+  const cur = all.filter(g => g.season === CUR_SEASON);
+  if (cur.length >= 2) f.push(mkFact(sc, 'ten sezon', `${nm}: ten sezon`, L(cur), cur.length, base, gchips(cur)));
+  const pw = prev.filter(g => Math.abs(g.n - n) <= 1), ex = prev.filter(g => g.n === n);
+  if (pw.length) f.push(mkFact(sc, `mecz ${n}`, `${nm}: mecze nr ${n - 1}–${n + 1} sezonu (poprzednie sezony)`, L(pw), pw.length, base, ex.map(g => `${g.season.slice(2)} #${n}: ${gchips([g])}`).join(' ')));
+  const pk = prev.filter(g => Math.abs(g.k - K) <= 1);
+  if (pk.length) f.push(mkFact(sc, `kolejka ${K}`, `${nm}: kolejki ${K - 1}–${K + 1} ligi (poprzednie sezony)`, L(pk), pk.length, base, pk.map(g => `${g.season.slice(2)} K${g.k}: ${gchips([g])}`).join(' ')));
+  const wd = all.filter(g => g.dow === dow);
+  f.push(mkFact(sc, dow.slice(0, 3).toLowerCase() + '.', `${nm}: mecze w dzień „${dow}”`, L(wd), wd.length, base));
+  const cal = prev.filter(g => dayDist(g.d, d) <= 2);
+  if (cal.length) f.push(mkFact(sc, 'data', `${nm}: ta data kalendarzowa ±2 dni`, L(cal), cal.length, base, gchips(cal)));
+  const role = all.filter(g => g.home === isHome);
+  f.push(mkFact(sc, isHome ? 'u siebie' : 'wyjazd', `${nm}: mecze ${isHome ? 'u siebie' : 'na wyjeździe'}`, L(role), role.length, base));
+  const lastG = all[all.length - 1];
+  const aft = all.filter(g => g.prevL === lastG.l);
+  f.push(mkFact(sc, lastG.l ? 'po łamaku' : 'po NIC', `${nm}: po meczu ${lastG.l ? 'z łamakiem' : 'bez łamaka'} (ostatni: ${lastG.cls === 'brak_lamaka' ? 'NIC' : lastG.cls})`, L(aft), aft.length, base));
+  if (b2b) { const a = all.filter(g => g.b2b); f.push(mkFact(sc, 'b2b', `${nm}: back-to-back`, L(a), a.length, base)); }
+  if (t3) { const a = all.filter(g => g.t3); f.push(mkFact(sc, '3 w 4 dni', `${nm}: 3 mecze w 4 dni`, L(a), a.length, base)); }
+  const ws = lastG.w ? lastG.ws + 1 : 0, ls = lastG.w ? 0 : lastG.ls + 1;
+  if (ws >= 3) { const a = all.filter(g => g.ws >= 3); f.push(mkFact(sc, `seria ${ws}W`, `${nm}: po serii 3+ zwycięstw (teraz ${ws})`, L(a), a.length, base)); }
+  if (ls >= 2) { const a = all.filter(g => g.ls >= 2); f.push(mkFact(sc, `seria ${ls}P`, `${nm}: po serii 2+ porażek (teraz ${ls})`, L(a), a.length, base)); }
+  const l30 = all.slice(-30);
+  f.push(mkFact(sc, 'X 30', `${nm}: dogrywki w ostatnich 30 meczach`, l30.filter(g => g.x).length, l30.length, I.BX, '', 'X'));
+  return f;
+}
+
+function pairFacts(h, a, d) {
+  const I = dosIndex();
+  const pg = I.recs.filter(r => r.d < d && ((r.h === h && r.a === a) || (r.h === a && r.a === h)));
+  if (!pg.length) return [];
+  const bs = t => { const g = (I.TG[t] || []).filter(x => x.d < d); return g.length ? g.filter(x => x.l).length / g.length : I.BL; };
+  const base = (bs(h) + bs(a)) / 2, L = x => x.filter(r => r.l).length;
+  const chipsP = x => gchips(x.map(r => ({ ...r, opp: null })));
+  const out = [];
+  out.push(mkFact('pair', 'H2H', `Wszystkie spotkania tej pary`, L(pg), pg.length, base, chipsP(pg)));
+  const at = pg.filter(r => r.h === h);
+  out.push(mkFact('pair', 'H2H dom', `Spotkania u ${h.split(' ').pop()}`, L(at), at.length, base, chipsP(at)));
+  const mo = pg.filter(r => r.d.slice(5, 7) === d.slice(5, 7));
+  if (mo.length) out.push(mkFact('pair', 'H2H miesiąc', `Spotkania w tym samym miesiącu`, L(mo), mo.length, base, chipsP(mo)));
+  out.push(mkFact('pair', 'H2H X', `Dogrywki (X) w H2H`, pg.filter(r => r.x).length, pg.length, I.BX, '', 'X'));
+  const c = k => pg.filter(r => r.cls === k).length;
+  out[0].detail += ` <span class="small-note">· 1/2 ×${c('1/2')} · 2/1 ×${c('2/1')} · X ×${c('X')}</span>`;
+  return out;
+}
+
+function dossierFor(row) {
+  if (row.dos) return row.dos;
+  const f = row.f, I = dosIndex();
+  const N = s27Build().byDay[f.d].length;
+  const facts = [
+    ...teamFacts('home', f.h, true, row.nH, row.k, f.d, row.ctx.b2bH, row.ctx.t3H),
+    ...teamFacts('away', f.a, false, row.nA, row.k, f.d, row.ctx.b2bA, row.ctx.t3A),
+    ...pairFacts(f.h, f.a, f.d),
+    ...dayFacts(f.d, row.k, N)];
+  const hot = facts.filter(x => x.dir === 'hot' && x.kind === 'L').sort((a, b) => a.p - b.p);
+  const hotX = facts.filter(x => x.dir === 'hot' && x.kind === 'X');
+  const cold = facts.filter(x => x.dir === 'cold' && x.kind === 'L');
+  row.dos = { facts, hot, hotX, cold, M: facts.length, score: hot.reduce((s, x) => s - Math.log10(x.p), 0) };
+  return row.dos;
+}
+
+function chipFact(x, row) {
+  const who = x.scope === 'home' ? '' : x.scope === 'away' ? '' : '';
+  return `<span class="s-tag ${x.kind === 'X' ? 'tx' : ''}" title="${x.label}">${x.short} ${x.hits}/${x.n}</span>`;
+}
+
+// ---------- 3. Teczka meczu (okno) ----------
+function openMatchDossier(row) {
+  const f = row.f, D = dossierFor(row);
+  const sec = (title, sc) => {
+    const fs = D.facts.filter(x => x.scope === sc && x.n > 0);
+    if (!fs.length) return '';
+    return `<div style="margin:16px 0 6px;font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:13px;color:var(--ink-soft);">${title}</div>
+    <table style="font-size:12.5px;"><thead><tr><th>Zależność</th><th class="num">Było</th><th class="num">%</th><th class="num">Baza</th><th></th></tr></thead><tbody>
+    ${fs.map(x => `<tr><td>${x.label}${x.detail ? `<div style="margin-top:3px;">${x.detail}</div>` : ''}</td><td class="num mono"><b>${x.hits}/${x.n}</b></td><td class="num mono">${(100 * x.rate).toFixed(0)}%</td><td class="num mono small-note">${(100 * x.base).toFixed(0)}%</td><td>${x.dir === 'hot' ? '🔥' : x.dir === 'cold' ? '❄' : ''}</td></tr>`).join('')}
+    </tbody></table>`;
+  };
+  const res = row.res;
+  const exp = (0.08 * D.M * 0.8).toFixed(1);
+  const box = document.getElementById('modal-box');
+  box.innerHTML = `
+    <div class="modal-close" onclick="closeModal()">✕</div>
+    <div class="modal-header ${res ? 'acc-' + (res.cls === '1/2' ? 'c12' : res.cls === '2/1' ? 'c21' : res.cls === 'X' ? 'cx' : 'cnone') : 'acc-cnone'}">
+      <div class="modal-matchup"><div class="modal-team">${f.h}</div>
+        <div class="modal-score" style="${res ? '' : 'font-size:16px;color:#B7C2CE;'}">${res ? `${res.fh}:${res.fa}` : 'VS'}</div>
+        <div class="modal-team">${f.a}</div></div>
+      <div class="modal-meta">${fmtDate(f.d)} · kolejka K${row.k} · mecz nr ${row.nH} (gosp.) / ${row.nA} (gość)${res ? ` · przerwa ${res.halfH}:${res.halfA} · <b>${clsLabel(res.cls)}</b>` : ''}</div>
+    </div>
+    <div style="padding:16px 22px 22px;">
+      <div class="small-note" style="margin:0 0 4px;">Sprawdzono <b>${D.M}</b> zależności z historii (3 sezony + bieżący). 🔥 = wynik wyraźnie ponad bazę (min. +15 pkt proc. i p ≤ 8%), ❄ = wyraźnie poniżej. <b>Gorących: ${D.hot.length}</b>${D.hotX.length ? ` · dogrywkowych: ${D.hotX.length}` : ''}. Czysty przypadek dałby średnio ok. ${exp} — liczy się to, ile ponad tę wartość i czy fakty się powtarzają. ${res ? 'Fakty liczone wyłącznie z meczów sprzed tej daty.' : ''}</div>
+      ${sec('🏠 Gospodarz — ' + f.h, 'home')}${sec('✈ Gość — ' + f.a, 'away')}${sec('⚔ Ta para', 'pair')}${sec('🗓 Dzień i kolejka', 'day')}
+      <div style="margin:18px 0 6px;font-family:'Oswald',sans-serif;text-transform:uppercase;font-size:13px;color:var(--ink-soft);">Historia spotkań</div>
+      ${h2hHistoryListHTML(f.h, f.a)}
+    </div>`;
+  box.querySelectorAll('[data-gid]').forEach(tr => { tr.onclick = () => openGameModal(tr.dataset.gid); });
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ---------- 4. Widok: Sezon 26/27 ----------
+function heatClass(n) { return n >= 5 ? 'h3' : n >= 3 ? 'h2' : n >= 1 ? 'h1' : 'h0'; }
+
 function renderSezon2627() {
   const el = document.getElementById('view-sezon2627');
-  const resMap = {};
-  allPreseasonResults().forEach(r => { resMap[psKey(r.date_iso, r.home_team, r.away_team)] = r; });
-  const allRows = PRESEASON_GAMES.map((g, idx) => {
-    const known = TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team);
-    if (!known) return { ...g, idx, unknown: true };
-    const sig = computeMatchSignal(g.home_team, g.away_team, false, false, g.date_iso);
-    return { ...g, idx, sig, risk: sig.pLamak + sig.pRemis, b2b: preseasonB2B(g), res: resMap[psKey(g.date_iso, g.home_team, g.away_team)] || null };
-  });
-  const playedCount = allRows.filter(r => r.res).length;
-  const known = allRows.filter(r => !r.unknown);
-  const byRiskDesc = [...known.filter(r => !r.res)].sort((a, b) => b.risk - a.risk);
-  const hotSet = new Set(byRiskDesc.slice(0, 3));
-  const warmSet = new Set(byRiskDesc.slice(3, 8));
-  const rows = allRows.slice().sort((a, b) => a.date_iso.localeCompare(b.date_iso) || a.time.localeCompare(b.time));
+  const D = s27Build();
+  const todayIso = localIso();
+  if (!D.days.length) { el.innerHTML = `<div class="empty-state"><div class="ico">◇</div>Brak terminarza sezonu 26/27 (data/fixtures_2026_27.json).</div>`; return; }
+  if (!s27Day || !D.byDay[s27Day]) s27Day = D.days.find(d => d >= todayIso && D.byDay[d].some(r => !r.res)) || D.days.find(d => d >= todayIso) || D.days[D.days.length - 1];
 
-  let html = `
-  <div class="section-title"><h2>Sezon 26/27</h2><div class="rule"></div></div>
-  <div class="card" style="margin-bottom:20px;border:1.5px solid var(--cnone);background:#FFF7F5;">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
-      <h3 style="color:var(--cnone);margin:0;">⚠ Obecnie: PRESEASON (mecze towarzyskie)</h3>
-      <span class="mono small-note">${rows.length} meczów · ${playedCount} rozegranych</span>
-    </div>
-    <div class="small-note" style="margin-top:8px;">
-      To mecze towarzyskie — trenerzy testują rotacje, gwiazdy grają ograniczone minuty, wynik nikogo nie obchodzi. Sygnały poniżej liczone tym samym modelem co w zakładce Prognoza, ale <b>nie są tu wiarygodne w normalnym sensie</b> — potraktuj to jako rozgrzewkę.
-    </div>
+  const done = D.rows.filter(r => r.res);
+  const cnt = { '1/2': 0, '2/1': 0, 'X': 0 };
+  done.forEach(r => { if (cnt[r.res.cls] !== undefined) cnt[r.res.cls]++; });
+  const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
+  let dayRows = D.byDay[s27Day].slice();
+  dayRows.forEach(dossierFor);
+  const dayDone = dayRows.filter(r => r.res).length;
+  const allDay = dayRows.slice();
+  if (s27Filter === 'done') dayRows = dayRows.filter(r => r.res);
+  else if (s27Filter === 'todo') dayRows = dayRows.filter(r => !r.res);
+  else if (s27Filter === 'strong') dayRows = dayRows.filter(r => r.dos.hot.length >= 3);
+  dayRows.sort((a, b) => b.dos.hot.length - a.dos.hot.length || b.dos.score - a.dos.score);
+
+  const idx = D.days.indexOf(s27Day);
+  const dayBtns = D.days.slice(Math.max(0, idx - 3), idx + 12).map(d => {
+    const dt = new Date(d + 'T12:00:00');
+    return `<button class="s-day ${d === s27Day ? 'on' : ''} ${d === todayIso ? 'today' : ''}" data-day="${d}">${DOW_SHORT[dt.getDay()]} ${d.slice(8)}.${d.slice(5, 7)}<small>${D.byDay[d].length}</small></button>`;
+  }).join('');
+  const dayName = DOW_FULL[new Date(s27Day + 'T12:00:00').getDay()];
+  const todo = allDay.filter(r => !r.res).sort((a, b) => b.dos.hot.length - a.dos.hot.length || b.dos.score - a.dos.score);
+  const ranked = (todo.length ? todo : allDay.slice().sort((a, b) => b.dos.hot.length - a.dos.hot.length));
+  const pick = ranked[0];
+  const dayF = dayFacts(s27Day, D.byDay[s27Day][0].k, D.byDay[s27Day].length).filter(x => x.n > 0);
+  const settle = D.days.filter(d => d <= todayIso && D.byDay[d].some(r => r.res)).slice(-3).reverse().map(d => {
+    const rs = D.byDay[d].filter(r => r.res), l = rs.filter(r => isLamak(r.res.cls)).length;
+    return `<div class="s-bar"><span>${d.slice(8)}.${d.slice(5, 7)}</span><div class="tr"><i style="width:${pct(l, rs.length)}%"></i></div><span><b>${l}/${rs.length}</b> · ${fmtPct(l, rs.length, 0)}</span></div>`;
+  }).join('');
+
+  const rowHTML = r => {
+    const f = r.f, dd = r.dos, res = r.res;
+    const tags = [];
+    if (r.ctx.b2bH || r.ctx.b2bA) tags.push(`<span class="s-tag b2b" title="Back-to-back w terminarzu">B2B ${[r.ctx.b2bH ? f.h.split(' ').pop() : null, r.ctx.b2bA ? f.a.split(' ').pop() : null].filter(Boolean).join(' + ')}</span>`);
+    dd.hot.slice(0, 3).forEach(x => tags.push(chipFact(x, r)));
+    dd.hotX.slice(0, 1).forEach(x => tags.push(chipFact(x, r)));
+    const neutral = ['H2H', `mecz ${r.nH}`, `mecz ${r.nA}`].map((sh, ix) => dd.facts.find(x => x.short === sh && x.n > 0 && x.dir !== 'hot' && (ix === 0 || x.scope === (ix === 1 ? 'home' : 'away'))));
+    neutral.filter(Boolean).slice(0, Math.max(0, 4 - tags.length)).forEach(x => tags.push(`<span class="s-tag nt" title="${x.label}">${x.short} ${x.hits}/${x.n}</span>`));
+    const mid = res
+      ? `<div><span class="s-score"><b>${res.fh}:${res.fa}</b>${res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(res.cls)}">${clsLabel(res.cls)}</span><div class="s-tags" style="margin-top:6px;">${tags.join('')}</div></div>`
+      : `<div class="s-tags">${tags.join('') || '<span class="small-note">brak wyraźnych zależności</span>'}</div>`;
+    return `<div class="s-row ${res ? rowClass(res.cls) : ''} ${heatClass(dd.hot.length)}" data-i="${r.i}">
+      <div class="s-team">${f.h}<span class="vs">gospodarz · mecz ${r.nH}</span></div><div class="s-team">${f.a}<span class="vs">gość · mecz ${r.nA}</span></div>
+      ${mid}
+      <div class="s-heat ${heatClass(dd.hot.length)}" title="Liczba zależności wyraźnie ponad bazę (z ${dd.M} sprawdzonych)"><b>🔥 ${dd.hot.length}</b><span>z ${dd.M}</span></div></div>`;
+  };
+
+  const fchip = (id, label) => `<div class="chip ${s27Filter === id ? 'on' : ''}" data-f="${id}">${label}</div>`;
+  el.innerHTML = `
+  <div class="section-title"><h2>🔥 Sezon zasadniczy 26/27</h2><div class="rule"></div></div>
+  <div class="s-stats">
+    <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}<span style="font-size:15px;color:var(--ink-soft)">/${D.rows.length}</span></div><div class="s">mecze sezonu zasadniczego</div></div>
+    <div class="s-stat hl"><div class="k">Łamaki w sezonie</div><div class="v">${done.length ? fmtPct(lam, done.length, 0) : '—'}</div><div class="s">${lam}/${done.length} · średnia historyczna ${(baselineRate()).toFixed(1)}%</div></div>
+    <div class="s-stat"><div class="k">1/2 · 2/1 · X</div><div class="v">${cnt['1/2']} · ${cnt['2/1']} · ${cnt['X']}</div><div class="s">w tym sezonie</div></div>
+    <div class="s-stat"><div class="k">${fmtDate(s27Day)} · K${D.byDay[s27Day][0].k}</div><div class="v">${D.byDay[s27Day].length}<span style="font-size:15px;color:var(--ink-soft)"> mecz.</span></div><div class="s">${dayDone} rozegranych · ${allDay.filter(r => r.dos.hot.length >= 3).length} z ≥3 wzorcami</div></div>
   </div>
-
-  <div class="card" style="margin-bottom:20px;border:1.5px solid var(--orange);background:var(--orange-soft);">
-    <h3 style="color:var(--orange);">⭐ Mecze, na które warto zwrócić szczególną uwagę</h3>
-    <div class="small-note" style="margin-top:-6px;margin-bottom:12px;">Najwyższe łączne prawdopodobieństwo ŁAMAK+REMIS spośród zaplanowanych meczów — te same wiersze są podświetlone niżej na liście.</div>
-    <table><thead><tr><th>Data</th><th>Godz.</th><th>Mecz</th><th class="num">Łamak</th><th class="num">Remis</th><th>Główny sygnał</th></tr></thead><tbody>
-    ${byRiskDesc.slice(0, 3).map(r => `<tr class="row-c12" style="cursor:pointer;" data-idx="${r.idx}">
-        <td class="mono">${fmtDate(r.date_iso)}</td><td class="mono">${r.time}</td>
-        <td>${r.home_team} — ${r.away_team}</td>
-        <td class="num"><b>${r.sig.pLamak.toFixed(0)}%</b></td>
-        <td class="num">${r.sig.pRemis.toFixed(0)}%</td>
-        <td class="small-note">${r.sig.tags[0] ? r.sig.tags[0].label : 'brak wyraźnego sygnału'}</td>
-      </tr>`).join('')}
-    </tbody></table>
-  </div>
-
-  <div id="s2627-list" class="card"></div>
-  <div class="small-note" style="margin-top:14px;">Rozegrane mecze są zaznaczone kolorem (zielony 1/2 · żółty 2/1 · fioletowy X · czerwony NIC) i mają wynik zamiast prognozy. Wyniki uzupełniają się automatycznie; szczegóły po kwartach → zakładka <b>Wyniki</b>.</div>`;
-  el.innerHTML = html;
-  el.querySelectorAll('table [data-idx]').forEach(elx => { elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]); });
-
-  const listBox = document.getElementById('s2627-list');
-  let listHtml = '';
-  let lastDay = null;
-  rows.forEach(r => {
-    if (r.date_iso !== lastDay) {
-      listHtml += `<div class="day-divider" style="cursor:default;"><span class="dname">${fmtDate(r.date_iso)}</span></div>`;
-      lastDay = r.date_iso;
-    }
-    if (r.unknown) {
-      listHtml += `<div class="game-row-nodate"><div>${r.home_team}</div><div class="gscore mono">${r.time}</div><div>${r.away_team}</div><div class="gbadge small-note">brak w bazie</div></div>`;
-      return;
-    }
-    const tier = hotSet.has(r) ? 'hot' : warmSet.has(r) ? 'warm' : 'plain';
-    const tierStyle = tier === 'hot' ? 'background:var(--orange-soft);border-left:4px solid var(--orange);' : tier === 'warm' ? 'background:#FFFBF5;border-left:4px solid #F0D9B8;' : '';
-    const star = tier === 'hot' ? '⭐ ' : '';
-    const b2bNote = (r.b2b.home || r.b2b.away) ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="Zagrali/zagrają inny mecz preseason w ciągu doby">🔁 b2b</span>` : '';
-    const topTag = r.sig.tags[0] ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="${r.sig.tags[0].label}">🔍 ${r.sig.tags[0].short}</span>` : '';
-    if (r.res) {
-      const c = r.res.classification;
-      const half = ` <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span>`;
-      listHtml += `<div class="game-row-nodate ${rowClass(c)}" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;">
-        <div class="mono small-note">${r.time}</div>
-        <div>${r.home_team} — ${r.away_team} ${b2bNote}</div>
-        <div class="mono" style="font-size:12.5px;"><b>${r.res.final_home}:${r.res.final_away}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''}${half}</div>
-        <div class="gbadge"><span class="badge ${badgeClass(c)}">${clsLabel(c)}</span></div>
-      </div>`;
-      return;
-    }
-    listHtml += `<div class="game-row-nodate" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;${tierStyle}">
-      <div class="mono small-note">${r.time}</div>
-      <div>${star}${r.home_team} — ${r.away_team} ${b2bNote}${topTag}</div>
-      <div class="mono" style="font-size:12px;">
-        <span style="color:var(--orange)">ŁAMAK ${r.sig.pLamak.toFixed(0)}%</span> ·
-        <span style="color:var(--cx)">REMIS ${r.sig.pRemis.toFixed(0)}%</span>
+  <div class="s-note">🔥 = zależność z historii wyraźnie ponad bazę (np. „mecz 5 · 3/3” = w meczach nr 4–6 poprzednich sezonów ta drużyna łamała 3 razy na 3). To fakty, nie prognoza: kilka z nich wypada zawsze z samego przypadku, dlatego liczy się powtarzalność i liczebność (<b>trafione/próba</b>). Kliknij mecz, by zobaczyć całą teczkę. Terminarz bez godzin — dni wg czasu polskiego.</div>
+  <div class="s-days">${dayBtns}<input type="date" id="s-jump" value="${s27Day}" min="${D.days[0]}" max="${D.days[D.days.length - 1]}" style="flex:none;width:150px;font-size:12.5px;"></div>
+  <div class="s-tools"><span class="lbl">Pokaż</span>${fchip('all', 'Wszystkie')}${fchip('todo', 'Nadchodzące')}${fchip('done', 'Zakończone')}${fchip('strong', '🔥 ≥ 3 wzorce')}</div>
+  <div class="s-layout">
+    <div class="s-list">
+      <div class="s-dayhead"><b>${dayName} ${fmtDate(s27Day)}</b><span class="mono small-note" style="margin:0;">${D.byDay[s27Day].length} meczów · wg liczby zgodnych wzorców</span></div>
+      ${dayRows.map(rowHTML).join('') || '<div class="empty-state"><div class="ico">◇</div>Brak meczów dla tego filtra.</div>'}
+    </div>
+    <div class="s-side">
+      <div class="s-panel pick"><div class="k">⭐ Najwięcej wzorców w dniu</div>
+        ${pick ? `<div class="s-pick"><div class="big">🔥${pick.dos.hot.length}</div><div><div style="font-weight:600;">${pick.f.h} — ${pick.f.a}</div><div class="small-note" style="margin:2px 0 0;">z ${pick.dos.M} sprawdzonych zależności</div></div></div>
+        <div style="margin-top:10px;font-size:12.5px;line-height:1.6;">${pick.dos.hot.slice(0, 4).map(x => `<div>🔥 ${x.label} — <b>${x.hits}/${x.n}</b></div>`).join('') || '<span class="small-note">brak wyraźnych</span>'}</div>` : ''}
       </div>
-      <div class="gbadge"><span class="badge" style="background:var(--ink);color:#fff;">BRAK ${r.sig.pBrak.toFixed(0)}%</span></div>
-    </div>`;
-  });
-  listBox.innerHTML = listHtml;
-  listBox.querySelectorAll('[data-idx]').forEach(elx => {
-    elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]);
-  });
+      <div class="s-panel"><div class="k">★ Ranking dnia (liczba wzorców)</div>
+        ${ranked.slice(0, 5).map((r, n) => `<div class="s-top" data-i="${r.i}"><span class="n">${n + 1}</span><span class="t">${r.f.h} – ${r.f.a}</span><span class="sc">${r.dos.hot.length}</span></div>`).join('')}
+      </div>
+      <div class="s-panel"><div class="k">🗓 Ten dzień — fakty ligowe</div>
+        ${dayF.map(x => `<div style="font-size:12.5px;padding:5px 0;border-top:1px solid var(--line-soft);">${x.dir === 'hot' ? '🔥 ' : x.dir === 'cold' ? '❄ ' : ''}${x.label}<div class="mono" style="color:var(--ink-soft);">${x.hits}/${x.n} (${(100 * x.rate).toFixed(0)}%, baza ${(100 * x.base).toFixed(0)}%)${x.detail ? ' · ' + x.detail : ''}</div></div>`).join('')}
+      </div>
+      <div class="s-panel"><div class="k">Rozliczenie · 3 ostatnie dni</div>
+        ${settle || '<div class="small-note" style="margin:0;">Brak rozegranych dni.</div>'}
+        <div class="small-note">sezon 26/27: ${done.length ? `${fmtPct(lam, done.length, 1)} łamaków (${lam}/${done.length})` : 'jeszcze bez wyników'}</div>
+      </div>
+    </div>
+  </div>`;
 
+  el.querySelectorAll('[data-day]').forEach(b => { b.onclick = () => { s27Day = b.dataset.day; renderSezon2627(); }; });
+  el.querySelectorAll('[data-f]').forEach(c => { c.onclick = () => { s27Filter = c.dataset.f; renderSezon2627(); }; });
+  document.getElementById('s-jump').onchange = e => { const v = e.target.value; if (!v) return; s27Day = D.days.find(d => d >= v) || D.days[D.days.length - 1]; renderSezon2627(); };
+  el.querySelectorAll('[data-i]').forEach(x => { x.onclick = () => { const r = D.rows[+x.dataset.i]; if (r.known) openMatchDossier(r); }; });
+}
+
+// ---------- 5. Widok: Zakończone (sezon zasadniczy, dzień po dniu) ----------
+function renderZakonczone() {
+  const el = document.getElementById('view-zakonczone');
+  const D = s27Build();
+  const done = D.rows.filter(r => r.res);
+  if (!done.length) { el.innerHTML = `<div class="section-title"><h2>✅ Zakończone</h2><div class="rule"></div></div><div class="empty-state"><div class="ico">◇</div>Brak rozegranych meczów sezonu zasadniczego.</div>`; return; }
+  const cnt = { '1/2': 0, '2/1': 0, 'X': 0, 'brak_lamaka': 0 };
+  done.forEach(r => { cnt[r.res.cls]++; });
+  const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
+  done.forEach(r => { if (r.known) dossierFor(r); });
+  const strong = done.filter(r => r.dos && r.dos.hot.length >= 3), weak = done.filter(r => r.dos && r.dos.hot.length < 3);
+  const sl = strong.filter(r => isLamak(r.res.cls)).length, wl = weak.filter(r => isLamak(r.res.cls)).length;
+  const test = f => zkFilter === 'all' ? true : zkFilter === 'lamak' ? isLamak(f.cls) : f.cls === zkFilter;
+  const days = [...new Set(done.map(r => r.f.d))].sort().reverse();
+  const chip = (id, label) => `<div class="chip ${zkFilter === id ? 'on' : ''}" data-zf="${id}">${label}</div>`;
+  const q = res => res.q.map(x => `<span class="mono" style="font-size:11.5px;color:var(--ink-soft);">${x[0]}:${x[1]}</span>`).join(' · ');
+  el.innerHTML = `
+  <div class="section-title"><h2>✅ Zakończone — sezon zasadniczy 26/27</h2><div class="rule"></div></div>
+  <div class="s-stats">
+    <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}</div><div class="s">w ${days.length} dniach ligowych</div></div>
+    <div class="s-stat hl"><div class="k">Łamaki</div><div class="v">${lam}</div><div class="s">${fmtPct(lam, done.length)} meczów</div></div>
+    <div class="s-stat"><div class="k">1/2 · 2/1</div><div class="v">${cnt['1/2']} · ${cnt['2/1']}</div><div class="s">gospodarz traci · gość traci</div></div>
+    <div class="s-stat"><div class="k">Remisy po 4. kw. (X)</div><div class="v">${cnt['X']}</div><div class="s">dogrywki w sezonie</div></div>
+    <div class="s-stat"><div class="k">Test wzorców</div><div class="v" style="font-size:20px;">🔥≥3: ${sl}/${strong.length}</div><div class="s">reszta: ${wl}/${weak.length} łamaków</div></div>
+  </div>
+  <div class="s-tools"><span class="lbl">Pokaż</span>${chip('all', 'Wszystkie')}${chip('lamak', 'Tylko łamaki')}${chip('1/2', '1/2')}${chip('2/1', '2/1')}${chip('X', 'X (remis)')}</div>
+  ${days.map(d => {
+    const rs = done.filter(r => r.f.d === d), shown = rs.filter(r => test({ cls: r.res.cls }));
+    if (!shown.length) return '';
+    const c = k => rs.filter(r => r.res.cls === k).length, l = c('1/2') + c('2/1') + c('X');
+    return `<div class="s-list" style="margin-bottom:14px;">
+      <div class="s-dayhead"><b>${DOW_FULL[new Date(d + 'T12:00:00').getDay()]} ${fmtDate(d)}</b><span class="mono small-note" style="margin:0;">K${rs[0].k} · ${rs.length} meczów</span>
+        <span class="day-pill" style="background:var(--orange-soft);color:var(--orange)">ŁAMAKI ${l}/${rs.length}</span>
+        <span class="day-pill" style="background:var(--c12-soft);color:var(--c12)">1/2 ×${c('1/2')}</span>
+        <span class="day-pill" style="background:var(--c21-soft);color:var(--c21)">2/1 ×${c('2/1')}</span>
+        <span class="day-pill" style="background:var(--cx-soft);color:var(--cx)">REMISY X ×${c('X')}</span>
+        <span class="day-pill" style="background:var(--cnone-soft);color:var(--cnone)">bez łamaka ×${c('brak_lamaka')}</span></div>
+      ${shown.map(r => `<div class="s-row ${rowClass(r.res.cls)} ${r.dos ? heatClass(r.dos.hot.length) : ''}" data-i="${r.i}">
+        <div class="s-team">${r.f.h}</div><div class="s-team">${r.f.a}</div>
+        <div><span class="s-score"><b>${r.res.fh}:${r.res.fa}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(r.res.cls)}">${clsLabel(r.res.cls)}</span>
+          <div style="margin-top:4px;">${q(r.res)} <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span></div></div>
+        <div class="s-heat ${r.dos ? heatClass(r.dos.hot.length) : 'h0'}" title="Wzorce wskazane PRZED meczem"><b>🔥 ${r.dos ? r.dos.hot.length : '—'}</b><span>przed meczem</span></div></div>`).join('')}
+    </div>`;
+  }).join('')}`;
+  el.querySelectorAll('[data-zf]').forEach(c => { c.onclick = () => { zkFilter = c.dataset.zf; renderZakonczone(); }; });
+  el.querySelectorAll('[data-i]').forEach(x => { x.onclick = () => { const r = D.rows[+x.dataset.i]; if (r.known) openMatchDossier(r); }; });
 }
 
 function lastGamesListHTML(team) {
@@ -676,7 +960,7 @@ function h2hMonthPatternHTML(lamakGames) {
   lamakGames.forEach(g => { (byMonth[g.month] = byMonth[g.month] || []).push(g); });
   const repeatedMonths = Object.entries(byMonth).filter(([m, gs]) => gs.length >= 2);
   if (repeatedMonths.length) {
-    return `<div class="small-note" style="background:var(--orange-soft);color:#8a4a10;padding:8px 12px;border-radius:6px;margin-bottom:10px;">
+    return `<div class="small-note" style="background:var(--orange-soft);color:var(--orange);padding:8px 12px;border-radius:6px;margin-bottom:10px;">
       🔁 <b>Wzorzec do obserwacji:</b> ${repeatedMonths.map(([m, gs]) => `łamaki tej pary padały w <b>${m}</b> ${gs.length}× (${gs.map(g => fmtDate(g.date_iso)).join(', ')})`).join('; ')}.
       Przy tak małej próbce (${lamakGames.length} łamaków łącznie) to może być zbieg okoliczności, ale warto mieć oko na ten mecz właśnie w tym miesiącu w kolejnych sezonach.
     </div>`;
@@ -710,7 +994,7 @@ function h2hHistoryListHTML(teamA, teamB) {
 function openUpcomingForecastModal(fixture) {
   const sig = computeMatchSignal(fixture.home_team, fixture.away_team, false, false, fixture.date_iso);
   const fc = sig.fc;
-  const b2b = preseasonB2B(fixture);
+  const b2b = fixture.b2b || preseasonB2B(fixture);
   const box = document.getElementById('modal-box');
   box.innerHTML = `
     <div class="modal-close" onclick="closeModal()">✕</div>
@@ -720,7 +1004,7 @@ function openUpcomingForecastModal(fixture) {
         <div class="modal-score" style="font-size:16px;color:#B7C2CE;">VS</div>
         <div class="modal-team">${fixture.away_team}</div>
       </div>
-      <div class="modal-meta">${fmtDate(fixture.date_iso)} · ${fixture.time} · PRESEASON — sygnał niewiarygodny, patrz zastrzeżenie</div>
+      <div class="modal-meta">${fmtDate(fixture.date_iso)} · ${fixture.regular ? 'SEZON ZASADNICZY 26/27 — model o słabej mocy predykcyjnej' : fixture.time + ' · PRESEASON — sygnał niewiarygodny, patrz zastrzeżenie'}</div>
     </div>
     <div class="modal-body">
       ${signalBoxesHTML(sig)}
@@ -728,7 +1012,7 @@ function openUpcomingForecastModal(fixture) {
       <div class="card" style="margin-top:18px;">
         <h3>Szczegóły kierunkowe <span class="small-note" style="text-transform:none;font-family:'Inter',sans-serif;">(dla własnej analizy — którędy może pójść łamak)</span></h3>
         <div class="small-note">Historia: ${fixture.home_team} jako gospodarz kończy 1/2 w ${fc.hist12.toFixed(1)}% swoich meczów domowych; ${fixture.away_team} jako gość kończy 2/1 w ${fc.hist21.toFixed(1)}% meczów wyjazdowych. H2H (${fc.h2hN} spotkań w bazie): 1/2 ${fc.h2h12.toFixed(1)}%, 2/1 ${fc.h2h21.toFixed(1)}%, X ${fc.h2hX.toFixed(1)}%.
-        ${(b2b.home || b2b.away) ? `<br><br>🔁 <b>Uwaga na terminarz:</b> ${[b2b.home ? fixture.home_team : null, b2b.away ? fixture.away_team : null].filter(Boolean).join(' i ')} ${(b2b.home && b2b.away) ? 'grają' : 'gra'} inny mecz preseason w ciągu doby od tego spotkania — możliwa rotacja składu lub zmęczenie.` : ''}
+        ${(b2b.home || b2b.away) ? `<br><br>🔁 <b>Uwaga na terminarz:</b> ${[b2b.home ? fixture.home_team : null, b2b.away ? fixture.away_team : null].filter(Boolean).join(' i ')} ${(b2b.home && b2b.away) ? 'grają' : 'gra'} inny mecz ${fixture.regular ? '' : 'preseason '}w ciągu doby od tego spotkania — możliwa rotacja składu lub zmęczenie.` : ''}
         </div>
       </div>
       <div class="card" style="margin-top:18px;">
@@ -1014,7 +1298,7 @@ function renderWyniki() {
     } catch (e) { return '—'; }
   }
 
-  let html = `<div class="section-title"><h2>Wyniki</h2><div class="rule"></div></div>
+  let html = `<div class="section-title"><h2>🧪 Preseason 26/27 — wyniki</h2><div class="rule"></div></div>
   <div class="section-desc">Rozegrane mecze preseason 26/27 z wynikami po kwartach — uzupełniane automatycznie każdego ranka z en.24score.com. Kolory jak w całej aplikacji: zielony 1/2, żółty 2/1, fioletowy X, czerwony NIC. Kolumna „Prognoza” to to, co model dawał przed meczem.</div>
   <div class="grid grid-3" style="margin:16px 0;">
     <div class="card"><div class="stat"><div class="val">${res.length}</div><div class="lbl">Rozegranych meczów</div></div></div>
@@ -2282,7 +2566,7 @@ function renderForecastResult() {
 // INIT
 // ============================================================
 const RENDERERS = {
-  sezon2627: renderSezon2627, wyniki: renderWyniki, wnioski: renderWnioski, terminarz: renderTerminarz, druzyny: renderDruzyny, h2h: renderH2H,
+  sezon2627: renderSezon2627, zakonczone: renderZakonczone, wyniki: renderWyniki, wnioski: renderWnioski, terminarz: renderTerminarz, druzyny: renderDruzyny, h2h: renderH2H,
   analiza: renderAnaliza, prognoza: renderPrognoza
 };
 selectTab('sezon2627');
