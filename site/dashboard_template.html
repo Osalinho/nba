@@ -8,27 +8,28 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg: #EEF1F6;
-  --panel: #FFFFFF;
-  --panel-alt: #F5F7FA;
-  --ink: #16202B;
-  --ink-soft: #4A5A6A;
-  --line: #D8DEE7;
-  --line-soft: #E7EBF1;
-  --orange: #E8600C;
-  --orange-soft: #FCE4D4;
-  --red: #D64545;
-  --red-soft: #FBE2E0;
-  --blue: #2E6E9E;
-  --blue-soft: #DEEAF3;
-  --gold: #B9862E;
-  --gold-soft: #F5E9D3;
-  --green: #2F7A52;
-  --green-soft: #DFEFE5;
-  --yellow: #C99A1D;
-  --yellow-soft: #FBF0CE;
-  --purple: #7B4FA0;
-  --purple-soft: #EEE3F6;
+  --bg: #17191C;
+  --side: #121417;
+  --panel: #1F2226;
+  --panel-alt: #272B30;
+  --ink: #E8EBEE;
+  --ink-soft: #9BA4AE;
+  --line: #343A41;
+  --line-soft: #2A2F35;
+  --orange: #FF8A1F;
+  --orange-soft: rgba(255,138,31,0.14);
+  --red: #F87171;
+  --red-soft: rgba(248,113,113,0.14);
+  --blue: #60A5FA;
+  --blue-soft: rgba(96,165,250,0.14);
+  --gold: #E3B04B;
+  --gold-soft: rgba(227,176,75,0.14);
+  --green: #34D399;
+  --green-soft: rgba(52,211,153,0.14);
+  --yellow: #FBBF24;
+  --yellow-soft: rgba(251,191,36,0.14);
+  --purple: #A78BFA;
+  --purple-soft: rgba(167,139,250,0.16);
   /* mapowanie zdarzeń na kolory (ustalone z Oskarem) */
   --c12: var(--green);
   --c12-soft: var(--green-soft);
@@ -38,8 +39,9 @@
   --cx-soft: var(--purple-soft);
   --cnone: var(--red);
   --cnone-soft: var(--red-soft);
-  --shadow: 0 1px 2px rgba(22,32,43,0.04), 0 6px 20px rgba(22,32,43,0.06);
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
 }
+html{color-scheme:dark;}
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}
 body{
@@ -203,9 +205,9 @@ td.num, th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
 select, input[type=text]{
   font-family:'Inter',sans-serif;font-size:13.5px;
   padding:9px 12px;border-radius:7px;border:1px solid var(--line);
-  background:#fff;color:var(--ink);
+  background:var(--panel-alt);color:var(--ink);
 }
-select option{color:var(--ink);background:#fff;}
+select option{color:var(--ink);background:var(--panel-alt);}
 select:focus, input:focus{outline:2px solid var(--orange-soft);border-color:var(--orange);}
 button.btn{
   font-family:'Oswald',sans-serif;font-size:13px;font-weight:500;
@@ -213,19 +215,19 @@ button.btn{
   background:var(--ink);color:#fff;border:none;
   padding:10px 18px;border-radius:7px;cursor:pointer;
 }
-button.btn:hover{background:#2A3745;}
+button.btn:hover{background:#FF9F45;}
 button.btn.secondary{background:var(--panel-alt);color:var(--ink);border:1px solid var(--line);}
-button.btn.secondary:hover{background:#EBEFF4;}
+button.btn.secondary:hover{background:var(--line);}
 button.btn.active-filter{background:var(--orange);}
 
 .chip{
   display:inline-flex;align-items:center;gap:6px;
   font-size:12.5px;padding:7px 12px;border-radius:20px;
-  border:1px solid var(--line);background:#fff;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel-alt);cursor:pointer;
   transition:all .12s;
 }
 .chip:hover{border-color:var(--orange);}
-.chip.on{background:var(--orange);border-color:var(--orange);color:#fff;}
+.chip.on{background:var(--orange);border-color:var(--orange);color:#17191C;}
 .chip-wrap{display:flex;flex-wrap:wrap;gap:8px;}
 
 .empty-state{
@@ -274,7 +276,7 @@ footer{
 
 .pattern-card{
   border:1px solid var(--line);border-radius:10px;padding:16px 18px;
-  cursor:pointer;transition:all .12s;background:#fff;
+  cursor:pointer;transition:all .12s;background:var(--panel-alt);
 }
 .pattern-card:hover{border-color:var(--orange);box-shadow:var(--shadow);}
 .pattern-card.active{border-color:var(--orange);background:var(--orange-soft);}
@@ -289,7 +291,7 @@ footer{
 /* ---------- Insights ---------- */
 .insight-card{
   display:flex;gap:16px;align-items:flex-start;
-  background:#fff;border:1px solid var(--line);border-left:4px solid var(--orange);
+  background:var(--panel-alt);border:1px solid var(--line);border-left:4px solid var(--orange);
   border-radius:8px;padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow);
 }
 .insight-card.type-red{border-left-color:var(--red);}
@@ -313,7 +315,7 @@ footer{
 }
 @media(max-width:900px){.hero-strip{grid-template-columns:repeat(2,1fr);}}
 .hero-box{
-  background:var(--ink);color:#fff;border-radius:10px;padding:18px 20px;position:relative;overflow:hidden;
+  background:var(--panel-alt);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:18px 20px;position:relative;overflow:hidden;
 }
 .hero-box .val{font-family:'Oswald',sans-serif;font-size:32px;font-weight:700;}
 .hero-box .lbl{font-size:11.5px;color:#B7C2CE;text-transform:uppercase;letter-spacing:0.03em;margin-top:2px;}
@@ -401,7 +403,7 @@ tr.row-c12 td, tr.row-c21 td, tr.row-cx td, tr.row-cnone td{border-bottom-color:
   background:rgba(255,255,255,0.9);border:1px solid var(--line);cursor:pointer;font-size:16px;
   display:flex;align-items:center;justify-content:center;z-index:2;
 }
-.modal-close:hover{background:#fff;}
+.modal-close:hover{background:var(--panel-alt);}
 .modal-header{
   background:var(--ink);color:#fff;border-radius:12px 12px 0 0;padding:26px 28px 22px;
   border-top:5px solid var(--ink);
@@ -423,49 +425,129 @@ tr.row-c12 td, tr.row-c21 td, tr.row-cx td, tr.row-cnone td{border-bottom-color:
 .reason-list li .ico{font-size:15px;line-height:1.4;}
 .context-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;}
 @media(max-width:600px){.context-grid{grid-template-columns:1fr;}}
-.context-team-card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px 16px;}
+.context-team-card{background:var(--panel-alt);border:1px solid var(--line);border-radius:8px;padding:14px 16px;}
 .context-team-card h4{font-family:'Oswald',sans-serif;font-size:14px;margin-bottom:10px;}
 .ctx-row{display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0;color:var(--ink-soft);}
 .ctx-row b{color:var(--ink);font-weight:600;}
+/* ================= GRAFIT — układ z sidebarem ================= */
+body{background:var(--bg);}
+.app{display:grid;grid-template-columns:256px minmax(0,1fr);min-height:100vh;}
+aside.side{position:sticky;top:0;height:100vh;overflow-y:auto;background:var(--side);border-right:1px solid var(--line);padding:22px 14px 18px;display:flex;flex-direction:column;gap:18px;}
+.brand-side h1{font-size:25px;text-transform:uppercase;letter-spacing:.03em;line-height:1.1;}
+.brand-side h1 span{color:var(--orange);}
+.brand-side .tag{font-size:10.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;margin-top:6px;line-height:1.4;}
+.side-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+.side-box .k{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:4px;font-family:'Oswald',sans-serif;}
+.side-box select,.side-box input{width:100%;font-size:12.5px;padding:7px 9px;}
+aside.side nav.tabs{background:none;border:0;position:static;}
+#tabs-nav{display:flex;flex-direction:column;gap:3px;padding:0;max-width:none;overflow:visible;}
+.tab-btn{width:100%;text-align:left;padding:11px 14px;border:none;border-bottom:none;border-radius:10px;font-size:14px;letter-spacing:.02em;color:var(--ink);}
+.tab-btn:hover{background:var(--panel);color:var(--ink);}
+.tab-btn.active{background:var(--orange);color:#17191C;border-bottom:none;font-weight:600;}
+.side-legend{display:flex;flex-direction:column;gap:7px;font-size:11.5px;color:var(--ink-soft);margin-top:auto;}
+.side-legend .legend-item{align-items:flex-start;}
+.side-legend .legend-dot{margin-top:3px;flex:none;}
+main{max-width:1480px;margin:0;padding:26px 30px 70px;}
+footer{border-top:1px solid var(--line);}
+.card{border-radius:12px;}
+.content{min-width:0;}
+main{overflow-x:hidden;}
+.s-side{min-width:0;}
+@media(max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr);}
+  aside.side{position:static;height:auto;padding:14px;gap:12px;}
+  #tabs-nav{flex-direction:row;overflow-x:auto;gap:6px;}
+  .tab-btn{width:auto;white-space:nowrap;padding:9px 12px;}
+  .side-legend{flex-direction:row;flex-wrap:wrap;margin-top:0;}
+  main{padding:16px 14px 60px;}
+}
+/* ---- Sezon 26/27 (styl Puckline) ---- */
+.s-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;}
+.s-stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+.s-stat .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-family:'Oswald',sans-serif;}
+.s-stat .v{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;line-height:1.2;margin-top:2px;}
+.s-stat .s{font-size:12px;color:var(--ink-soft);}
+.s-stat.hl{border-color:rgba(255,138,31,.55);}.s-stat.hl .v{color:var(--orange);}
+.s-note{background:rgba(255,138,31,.07);border:1px solid rgba(255,138,31,.3);border-radius:12px;padding:11px 16px;font-size:13px;color:var(--ink);margin-bottom:14px;}
+.s-days{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:10px;align-items:center;}
+.s-day{flex:none;background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:8px 13px;font-family:'Oswald',sans-serif;font-size:14px;cursor:pointer;white-space:nowrap;}
+.s-day small{color:var(--ink-soft);margin-left:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;}
+.s-day:hover{border-color:var(--orange);}
+.s-day.on{background:var(--orange);border-color:var(--orange);color:#17191C;}.s-day.on small{color:#3a2a14;}
+.s-day.today{box-shadow:inset 0 -3px 0 var(--orange);}
+.s-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+.s-tools .lbl{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-family:'Oswald',sans-serif;margin-left:6px;}
+.s-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start;}
+@media(max-width:1180px){.s-layout{grid-template-columns:minmax(0,1fr);}}
+.s-list{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+.s-dayhead{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:13px 18px;background:var(--panel-alt);border-bottom:1px solid var(--line);}
+.s-dayhead b{font-family:'Oswald',sans-serif;font-size:18px;}
+.s-row{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.15fr) minmax(0,1.3fr) 150px 38px;gap:12px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line-soft);cursor:pointer;border-left:4px solid transparent;}
+.s-row:last-child{border-bottom:0;}
+.s-row:hover{background:var(--panel-alt);}
+.s-row.gA{border-left-color:#34D399;}.s-row.gB{border-left-color:#A3E635;}
+.s-row.row-c12{background:var(--c12-soft);}.s-row.row-c21{background:var(--c21-soft);}.s-row.row-cx{background:var(--cx-soft);}.s-row.row-cnone{background:var(--cnone-soft);}
+.s-team{font-weight:600;font-size:14.5px;line-height:1.25;}
+.s-team .vs{color:var(--ink-soft);font-weight:400;font-size:11px;font-family:'IBM Plex Mono',monospace;display:block;}
+.s-tags{display:flex;flex-wrap:wrap;gap:5px;}
+.s-tag{font-size:11px;padding:3px 8px;border-radius:6px;background:rgba(52,211,153,.12);color:#34D399;border:1px solid rgba(52,211,153,.25);white-space:nowrap;}
+.s-tag.b2b{background:rgba(251,191,36,.12);color:#FBBF24;border-color:rgba(251,191,36,.28);}
+.s-prob{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.5;text-align:right;}
+.s-prob b{font-size:15px;}
+.s-grade{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:16px;color:#14161A;background:var(--ink-soft);justify-self:end;}
+.s-grade.gA{background:#34D399;}.s-grade.gB{background:#A3E635;}
+.s-score{font-family:'IBM Plex Mono',monospace;font-size:15px;}
+@media(max-width:760px){
+  .s-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:6px;padding:12px 12px;}
+  .s-row .s-grade{grid-column:2;grid-row:3;}
+  .s-row .s-prob{grid-column:1;grid-row:3;}
+  .s-row .s-tags{grid-column:1 / -1;}.s-prob{text-align:left;}
+}
+.s-side{display:flex;flex-direction:column;gap:14px;position:sticky;top:18px;}
+.s-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
+.s-panel.pick{border-color:rgba(255,138,31,.55);}
+.s-panel .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-family:'Oswald',sans-serif;margin-bottom:10px;}
+.s-pick{display:flex;gap:14px;align-items:center;}
+.s-pick .big{font-family:'Oswald',sans-serif;font-size:44px;font-weight:700;color:var(--orange);line-height:1;}
+.s-top{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line-soft);cursor:pointer;font-size:13.5px;}
+.s-top:first-of-type{border-top:0;}
+.s-top .n{width:18px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;font-size:12px;}
+.s-top .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.s-top .sc{font-family:'IBM Plex Mono',monospace;font-weight:600;background:rgba(52,211,153,.16);color:#34D399;border-radius:8px;padding:3px 8px;font-size:13px;}
+.s-bar{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 0;}
+.s-bar .tr{height:8px;border-radius:4px;background:var(--cnone);overflow:hidden;}
+.s-bar .tr i{display:block;height:100%;background:#34D399;}
+
 </style>
 </head>
 <body>
 
-<header class="top">
-  <div class="top-inner">
-    <div class="brand">
-      <h1>NBA <span>Łamaki</span></h1>
-      <div class="tag">1/2 · 2/1 · X — wzorce ukryte w statystykach połówkowych</div>
-    </div>
-    <div class="field" style="gap:4px;">
-      <label style="font-size:10.5px;color:#9FB0BE;font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:0.04em;">Zakres danych</label>
-      <select id="global-season" style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.22);color:#fff;">
-        <option value="all">Wszystkie sezony (2023–2026)</option>
-        <option value="2025-26">2025-26</option>
-        <option value="2024-25">2024-25</option>
-        <option value="2023-24">2023-24</option>
-      </select>
-    </div>
+<div class="app">
+<aside class="side">
+  <div class="brand-side">
+    <h1>NBA <span>Łamaki</span></h1>
+    <div class="tag">1/2 · 2/1 · X — wzorce ukryte w statystykach połówkowych</div>
   </div>
-</header>
-<div class="crack"></div>
-
-<nav class="tabs">
-  <div class="tabs-inner" id="tabs-nav"></div>
-</nav>
-<div style="background:var(--panel);border-bottom:1px solid var(--line);padding:8px 24px;">
-  <div class="legend-strip" style="max-width:1320px;margin:0 auto;margin-bottom:0;position:relative;">
+  <div class="side-box"><div class="k">Zakres danych</div>
+    <select id="global-season">
+      <option value="all">Wszystkie sezony</option>
+      <option value="2026-27">2026-27</option>
+      <option value="2025-26">2025-26</option>
+      <option value="2024-25">2024-25</option>
+      <option value="2023-24">2023-24</option>
+    </select></div>
+  <nav class="tabs"><div class="tabs-inner" id="tabs-nav"></div></nav>
+  <div class="side-box" style="position:relative;"><div class="k">Szukaj drużyny</div>
+    <input type="text" id="global-team-search" placeholder="🔍 np. Lakers" autocomplete="off">
+    <div id="team-search-results" style="display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--panel-alt);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);z-index:60;overflow:hidden;"></div></div>
+  <div class="side-legend">
     <div class="legend-item"><span class="legend-dot" style="background:var(--c12)"></span>1/2 — gospodarz traci prowadzenie</div>
     <div class="legend-item"><span class="legend-dot" style="background:var(--c21)"></span>2/1 — gość traci prowadzenie</div>
     <div class="legend-item"><span class="legend-dot" style="background:var(--cx)"></span>X — remis po 4. kwarcie (OT)</div>
     <div class="legend-item"><span class="legend-dot" style="background:var(--cnone)"></span>NIC — mecz bez łamaka</div>
-    <div style="margin-left:auto;position:relative;">
-      <input type="text" id="global-team-search" placeholder="🔍 Szukaj drużyny…" autocomplete="off" style="width:200px;font-size:12.5px;padding:6px 10px;">
-      <div id="team-search-results" style="display:none;position:absolute;right:0;top:32px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);z-index:60;min-width:200px;overflow:hidden;"></div>
-    </div>
   </div>
-</div>
-
+</aside>
+<div class="content">
 <main>
   <div class="view" id="view-sezon2627"></div>
   <div class="view" id="view-wyniki"></div>
@@ -476,15 +558,17 @@ tr.row-c12 td, tr.row-c21 td, tr.row-cx td, tr.row-cnone td{border-bottom-color:
   <div class="view" id="view-prognoza"></div>
   <div class="view" id="view-wnioski"></div>
 </main>
+<footer>NBA ŁAMAKI · dane: en.24score.com · analiza własna · v2 grafit</footer>
+</div></div>
 
 <div id="modal-overlay" class="modal-overlay">
   <div class="modal-box" id="modal-box"></div>
 </div>
 
-<footer>NBA ŁAMAKI · dane: en.24score.com · analiza własna · v1</footer>
 
 <script id="nba-data" type="application/json">__DATA_JSON__</script>
 <script id="preseason-data" type="application/json">__PRESEASON_JSON__</script>
+<script id="fixtures-data" type="application/json">__FIXTURES_JSON__</script>
 <script>
 __APP_JS__
 </script>
