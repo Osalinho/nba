@@ -3,6 +3,7 @@ Wzbogacenie danych meczów NBA o cechy potrzebne do modułu Zależności,
 Analizy drużyny, H2H i Wyszukiwarki schematów.
 """
 import json
+from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
@@ -37,6 +38,10 @@ def classify(g):
 
 def load_all():
     games = json.load(open('data/games_all.json', encoding='utf-8'))
+    hist = Path('data/history_2015_2023.json')  # starsze sezony (jednorazowy import z 24score)
+    if hist.exists():
+        have = {(g['date'], g['home_team'], g['away_team']) for g in games}
+        games += [g for g in json.load(open(hist, encoding='utf-8')) if (g['date'], g['home_team'], g['away_team']) not in have]
     for g in games:
         g['date_obj'] = datetime.strptime(g['date'], '%d.%m.%Y')
         g['date_iso'] = g['date_obj'].strftime('%Y-%m-%d')

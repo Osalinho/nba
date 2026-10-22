@@ -2,6 +2,8 @@
 Składa finalny index.html z: site/dashboard_template.html + data/enriched_data.json + site/app.js.
 Uruchamiać z katalogu głównego repo: python scripts/build_site.py
 """
+import base64
+import gzip
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -10,7 +12,8 @@ template = (ROOT / 'site' / 'dashboard_template.html').read_text(encoding='utf-8
 data_json = (ROOT / 'data' / 'enriched_data.json').read_text(encoding='utf-8')
 app_js = (ROOT / 'site' / 'app.js').read_text(encoding='utf-8')
 
-data_json_safe = data_json.replace('</script>', '<\\/script>')
+# dane skompresowane gzip + base64 (strona rozpakowuje je w przeglądarce) - ok. 10x mniejszy index.html
+data_gz = base64.b64encode(gzip.compress(data_json.encode('utf-8'), compresslevel=9, mtime=0)).decode('ascii')
 
 # wyniki preseason (małą kopię wbudowujemy na wypadek otwarcia pliku bez internetu;
 # na GitHub Pages strona i tak dociąga świeży data/preseason_results.json)
@@ -22,7 +25,7 @@ fx_path = ROOT / 'data' / 'fixtures_2026_27.json'
 fx_json = fx_path.read_text(encoding='utf-8') if fx_path.exists() else '[]'
 fx_json_safe = fx_json.replace('</script>', '<\\/script>')
 
-out = (template.replace('__DATA_JSON__', data_json_safe)
+out = (template.replace('__DATA_GZ__', data_gz)
        .replace('__FIXTURES_JSON__', fx_json_safe)
        .replace('__PRESEASON_JSON__', pre_json_safe)
        .replace('__APP_JS__', app_js))
