@@ -4,7 +4,7 @@
 const RAW = JSON.parse(document.getElementById('nba-data').textContent);
 const ALL_GAMES = RAW.games.slice().sort((a, b) => a.date_iso.localeCompare(b.date_iso));
 const TEAMS = RAW.teams;
-const SEASONS = ['2023-24', '2024-25', '2025-26'];
+const SEASONS = ['2023-24', '2024-25', '2025-26', '2026-27'];
 
 const isLamak = c => c === '1/2' || c === '2/1' || c === 'X';
 const LABELS = { '1/2': '1/2', '2/1': '2/1', 'X': 'X', 'brak_lamaka': '—', 'remis_do_przerwy_bez_OT': '—' };
@@ -110,14 +110,14 @@ rebuildAll();
 // TABS
 // ============================================================
 const TABS = [
-  { id: 'sezon2627', label: 'Sezon 26/27' },
-  { id: 'wyniki', label: 'Wyniki' },
-  { id: 'terminarz', label: 'Terminarz (historia)' },
-  { id: 'druzyny', label: 'Drużyny' },
-  { id: 'h2h', label: 'H2H' },
-  { id: 'analiza', label: 'Zależności i wzorce' },
-  { id: 'prognoza', label: 'Prognoza meczu' },
-  { id: 'wnioski', label: 'Wnioski' },
+  { id: 'sezon2627', label: '🔥 Sezon 26/27' },
+  { id: 'wyniki', label: '📊 Wyniki' },
+  { id: 'terminarz', label: '🗓 Terminarz (historia)' },
+  { id: 'druzyny', label: '🏀 Drużyny' },
+  { id: 'h2h', label: '⚔ H2H' },
+  { id: 'analiza', label: '🔎 Zależności i wzorce' },
+  { id: 'prognoza', label: '🎯 Prognoza meczu' },
+  { id: 'wnioski', label: '💡 Wnioski' },
 ];
 const tabsNav = document.getElementById('tabs-nav');
 TABS.forEach((t, i) => {
@@ -554,99 +554,151 @@ function classifyQuarters(q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a) {
 }
 
 // ============================================================
-// SEZON 26/27 — widok terminarza preseason
+// SEZON 26/27 — sezon zasadniczy: terminarz + sygnały (układ „dzień po dniu”)
 // ============================================================
+const FIXTURES = (() => { try { return JSON.parse(document.getElementById('fixtures-data').textContent || '[]'); } catch (e) { return []; } })();
+const DOW_SHORT = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'];
+let s27Day = null, s27Filter = 'all';
+let S27 = null;
+function localIso(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function isoPlus(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return localIso(d); }
+
+function s27Build() {
+  if (S27) return S27;
+  const played = ALL_GAMES.filter(g => g.season === '2026-27' && g.stage === 'regular');
+  const busy = new Set();
+  FIXTURES.forEach(f => { busy.add(f.h + '|' + f.d); busy.add(f.a + '|' + f.d); });
+  const used = new Set();
+  const rows = FIXTURES.map((f, i) => {
+    const known = TEAMS.includes(f.h) && TEAMS.includes(f.a);
+    let res = null;
+    const g = played.find(p => !used.has(p.game_id) && p.home_team === f.h && p.away_team === f.a && Math.abs((new Date(p.date_iso) - new Date(f.d)) / 864e5) <= 1);
+    if (g) {
+      used.add(g.game_id);
+      res = { fh: g.final_home, fa: g.final_away, ot: g.num_ot, halfH: g.half_home, halfA: g.half_away, cls: g.classification };
+    } else if (f.q) {
+      const q = f.q, hh = q[0][0] + q[1][0], ha = q[0][1] + q[1][1];
+      const rh = hh + q[2][0] + q[3][0], ra = ha + q[2][1] + q[3][1];
+      const ot = (f.ot || []);
+      res = { fh: rh + ot.reduce((a, x) => a + x[0], 0), fa: ra + ot.reduce((a, x) => a + x[1], 0), ot: ot.length, halfH: hh, halfA: ha,
+        cls: classifyQuarters(q[0][0], q[0][1], q[1][0], q[1][1], q[2][0], q[2][1], q[3][0], q[3][1]) };
+    }
+    if (res && !isLamak(res.cls)) res.cls = 'brak_lamaka';
+    const b2b = { home: busy.has(f.h + '|' + isoPlus(f.d, -1)), away: busy.has(f.a + '|' + isoPlus(f.d, -1)) };
+    let sig = null;
+    if (known && !res) { try { sig = computeMatchSignal(f.h, f.a, b2b.home, b2b.away, f.d); } catch (e) { sig = null; } }
+    return { i, f, res, sig, b2b, risk: sig ? sig.pLamak + sig.pRemis : null, grade: 'C' };
+  });
+  const risks = rows.filter(r => r.sig).map(r => r.risk).sort((a, b) => a - b);
+  const q = p => risks.length ? risks[Math.min(risks.length - 1, Math.floor(p * risks.length))] : 0;
+  const tA = q(0.9), tB = q(0.7);
+  rows.forEach(r => { if (r.sig) r.grade = r.risk >= tA ? 'A' : r.risk >= tB ? 'B' : 'C'; });
+  const byDay = {};
+  rows.forEach(r => { (byDay[r.f.d] = byDay[r.f.d] || []).push(r); });
+  S27 = { rows, byDay, days: Object.keys(byDay).sort() };
+  return S27;
+}
+
 function renderSezon2627() {
   const el = document.getElementById('view-sezon2627');
-  const resMap = {};
-  allPreseasonResults().forEach(r => { resMap[psKey(r.date_iso, r.home_team, r.away_team)] = r; });
-  const allRows = PRESEASON_GAMES.map((g, idx) => {
-    const known = TEAMS.includes(g.home_team) && TEAMS.includes(g.away_team);
-    if (!known) return { ...g, idx, unknown: true };
-    const sig = computeMatchSignal(g.home_team, g.away_team, false, false, g.date_iso);
-    return { ...g, idx, sig, risk: sig.pLamak + sig.pRemis, b2b: preseasonB2B(g), res: resMap[psKey(g.date_iso, g.home_team, g.away_team)] || null };
-  });
-  const playedCount = allRows.filter(r => r.res).length;
-  const known = allRows.filter(r => !r.unknown);
-  const byRiskDesc = [...known.filter(r => !r.res)].sort((a, b) => b.risk - a.risk);
-  const hotSet = new Set(byRiskDesc.slice(0, 3));
-  const warmSet = new Set(byRiskDesc.slice(3, 8));
-  const rows = allRows.slice().sort((a, b) => a.date_iso.localeCompare(b.date_iso) || a.time.localeCompare(b.time));
+  const D = s27Build();
+  const todayIso = localIso();
+  if (!D.days.length) { el.innerHTML = `<div class="empty-state"><div class="ico">◇</div>Brak terminarza sezonu 26/27 (data/fixtures_2026_27.json).</div>`; return; }
+  if (!s27Day || !D.byDay[s27Day]) s27Day = D.days.find(d => d >= todayIso && D.byDay[d].some(r => !r.res)) || D.days.find(d => d >= todayIso) || D.days[D.days.length - 1];
 
-  let html = `
-  <div class="section-title"><h2>Sezon 26/27</h2><div class="rule"></div></div>
-  <div class="card" style="margin-bottom:20px;border:1.5px solid var(--cnone);background:#FFF7F5;">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;">
-      <h3 style="color:var(--cnone);margin:0;">⚠ Obecnie: PRESEASON (mecze towarzyskie)</h3>
-      <span class="mono small-note">${rows.length} meczów · ${playedCount} rozegranych</span>
-    </div>
-    <div class="small-note" style="margin-top:8px;">
-      To mecze towarzyskie — trenerzy testują rotacje, gwiazdy grają ograniczone minuty, wynik nikogo nie obchodzi. Sygnały poniżej liczone tym samym modelem co w zakładce Prognoza, ale <b>nie są tu wiarygodne w normalnym sensie</b> — potraktuj to jako rozgrzewkę.
-    </div>
-  </div>
+  const done = D.rows.filter(r => r.res);
+  const cnt = { '1/2': 0, '2/1': 0, 'X': 0 };
+  done.forEach(r => { if (cnt[r.res.cls] !== undefined) cnt[r.res.cls]++; });
+  const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
+  const base = baselineRate();
+  let dayRows = D.byDay[s27Day].slice();
+  const dayDone = dayRows.filter(r => r.res).length;
+  if (s27Filter === 'done') dayRows = dayRows.filter(r => r.res);
+  else if (s27Filter === 'todo') dayRows = dayRows.filter(r => !r.res);
+  else if (s27Filter === 'strong') dayRows = dayRows.filter(r => r.grade === 'A' || r.grade === 'B');
+  dayRows.sort((a, b) => (b.risk ?? -1) - (a.risk ?? -1) || a.f.h.localeCompare(b.f.h));
 
-  <div class="card" style="margin-bottom:20px;border:1.5px solid var(--orange);background:var(--orange-soft);">
-    <h3 style="color:var(--orange);">⭐ Mecze, na które warto zwrócić szczególną uwagę</h3>
-    <div class="small-note" style="margin-top:-6px;margin-bottom:12px;">Najwyższe łączne prawdopodobieństwo ŁAMAK+REMIS spośród zaplanowanych meczów — te same wiersze są podświetlone niżej na liście.</div>
-    <table><thead><tr><th>Data</th><th>Godz.</th><th>Mecz</th><th class="num">Łamak</th><th class="num">Remis</th><th>Główny sygnał</th></tr></thead><tbody>
-    ${byRiskDesc.slice(0, 3).map(r => `<tr class="row-c12" style="cursor:pointer;" data-idx="${r.idx}">
-        <td class="mono">${fmtDate(r.date_iso)}</td><td class="mono">${r.time}</td>
-        <td>${r.home_team} — ${r.away_team}</td>
-        <td class="num"><b>${r.sig.pLamak.toFixed(0)}%</b></td>
-        <td class="num">${r.sig.pRemis.toFixed(0)}%</td>
-        <td class="small-note">${r.sig.tags[0] ? r.sig.tags[0].label : 'brak wyraźnego sygnału'}</td>
-      </tr>`).join('')}
-    </tbody></table>
-  </div>
+  const idx = D.days.indexOf(s27Day);
+  const dayBtns = D.days.slice(Math.max(0, idx - 3), idx + 12).map(d => {
+    const dt = new Date(d + 'T12:00:00');
+    return `<button class="s-day ${d === s27Day ? 'on' : ''} ${d === todayIso ? 'today' : ''}" data-day="${d}">${DOW_SHORT[dt.getDay()]} ${d.slice(8)}.${d.slice(5, 7)}<small>${D.byDay[d].length}</small></button>`;
+  }).join('');
+  const dt0 = new Date(s27Day + 'T12:00:00');
+  const dayName = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'][dt0.getDay()];
+  const todo = D.byDay[s27Day].filter(r => r.sig).sort((a, b) => b.risk - a.risk);
+  const pick = todo[0];
 
-  <div id="s2627-list" class="card"></div>
-  <div class="small-note" style="margin-top:14px;">Rozegrane mecze są zaznaczone kolorem (zielony 1/2 · żółty 2/1 · fioletowy X · czerwony NIC) i mają wynik zamiast prognozy. Wyniki uzupełniają się automatycznie; szczegóły po kwartach → zakładka <b>Wyniki</b>.</div>`;
-  el.innerHTML = html;
-  el.querySelectorAll('table [data-idx]').forEach(elx => { elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]); });
+  // rozliczenie: 3 ostatnie dni, w których są rozegrane mecze
+  const settle = D.days.filter(d => d <= todayIso && D.byDay[d].some(r => r.res)).slice(-3).reverse().map(d => {
+    const rs = D.byDay[d].filter(r => r.res), l = rs.filter(r => isLamak(r.res.cls)).length;
+    return `<div class="s-bar"><span>${d.slice(8)}.${d.slice(5, 7)}</span><div class="tr"><i style="width:${pct(l, rs.length)}%"></i></div><span><b>${l}/${rs.length}</b> · ${fmtPct(l, rs.length, 0)}</span></div>`;
+  }).join('');
 
-  const listBox = document.getElementById('s2627-list');
-  let listHtml = '';
-  let lastDay = null;
-  rows.forEach(r => {
-    if (r.date_iso !== lastDay) {
-      listHtml += `<div class="day-divider" style="cursor:default;"><span class="dname">${fmtDate(r.date_iso)}</span></div>`;
-      lastDay = r.date_iso;
-    }
-    if (r.unknown) {
-      listHtml += `<div class="game-row-nodate"><div>${r.home_team}</div><div class="gscore mono">${r.time}</div><div>${r.away_team}</div><div class="gbadge small-note">brak w bazie</div></div>`;
-      return;
-    }
-    const tier = hotSet.has(r) ? 'hot' : warmSet.has(r) ? 'warm' : 'plain';
-    const tierStyle = tier === 'hot' ? 'background:var(--orange-soft);border-left:4px solid var(--orange);' : tier === 'warm' ? 'background:#FFFBF5;border-left:4px solid #F0D9B8;' : '';
-    const star = tier === 'hot' ? '⭐ ' : '';
-    const b2bNote = (r.b2b.home || r.b2b.away) ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="Zagrali/zagrają inny mecz preseason w ciągu doby">🔁 b2b</span>` : '';
-    const topTag = r.sig.tags[0] ? `<span class="day-pill" style="background:#EEE;color:var(--ink-soft);margin-left:6px;" title="${r.sig.tags[0].label}">🔍 ${r.sig.tags[0].short}</span>` : '';
+  const rowHTML = r => {
+    const f = r.f, tagsArr = [];
+    if (r.b2b.home || r.b2b.away) tagsArr.push(`<span class="s-tag b2b" title="Back-to-back w terminarzu">B2B ${[r.b2b.home ? f.h.split(' ').pop() : null, r.b2b.away ? f.a.split(' ').pop() : null].filter(Boolean).join(' + ')}</span>`);
+    if (r.sig) r.sig.tags.slice(0, 2).forEach(t => tagsArr.push(`<span class="s-tag" title="${t.label}">${t.short}</span>`));
     if (r.res) {
-      const c = r.res.classification;
-      const half = ` <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span>`;
-      listHtml += `<div class="game-row-nodate ${rowClass(c)}" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;">
-        <div class="mono small-note">${r.time}</div>
-        <div>${r.home_team} — ${r.away_team} ${b2bNote}</div>
-        <div class="mono" style="font-size:12.5px;"><b>${r.res.final_home}:${r.res.final_away}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''}${half}</div>
-        <div class="gbadge"><span class="badge ${badgeClass(c)}">${clsLabel(c)}</span></div>
-      </div>`;
-      return;
+      const c = r.res.cls;
+      return `<div class="s-row ${rowClass(c)}" data-i="${r.i}">
+        <div class="s-team">${f.h}<span class="vs">gospodarz</span></div><div class="s-team">${f.a}<span class="vs">gość</span></div>
+        <div class="s-score"><b>${r.res.fh}:${r.res.fa}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''} <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span></div>
+        <div style="text-align:right;"><span class="badge ${badgeClass(c)}">${clsLabel(c)}</span></div><div></div></div>`;
     }
-    listHtml += `<div class="game-row-nodate" data-idx="${r.idx}" style="cursor:pointer;grid-template-columns:70px 1.6fr 1fr 0.9fr;${tierStyle}">
-      <div class="mono small-note">${r.time}</div>
-      <div>${star}${r.home_team} — ${r.away_team} ${b2bNote}${topTag}</div>
-      <div class="mono" style="font-size:12px;">
-        <span style="color:var(--orange)">ŁAMAK ${r.sig.pLamak.toFixed(0)}%</span> ·
-        <span style="color:var(--cx)">REMIS ${r.sig.pRemis.toFixed(0)}%</span>
-      </div>
-      <div class="gbadge"><span class="badge" style="background:var(--ink);color:#fff;">BRAK ${r.sig.pBrak.toFixed(0)}%</span></div>
-    </div>`;
-  });
-  listBox.innerHTML = listHtml;
-  listBox.querySelectorAll('[data-idx]').forEach(elx => {
-    elx.onclick = () => openUpcomingForecastModal(PRESEASON_GAMES[+elx.dataset.idx]);
-  });
+    if (!r.sig) return `<div class="s-row" data-i="${r.i}" style="cursor:default;"><div class="s-team">${f.h}</div><div class="s-team">${f.a}</div><div class="small-note">brak w bazie</div><div></div><div></div></div>`;
+    return `<div class="s-row g${r.grade}" data-i="${r.i}">
+      <div class="s-team">${f.h}<span class="vs">gospodarz</span></div><div class="s-team">${f.a}<span class="vs">gość</span></div>
+      <div class="s-tags">${tagsArr.join('') || '<span class="small-note">brak wyraźnego sygnału</span>'}</div>
+      <div class="s-prob"><span style="color:var(--orange)">ŁAMAK <b>${r.sig.pLamak.toFixed(0)}%</b></span><br><span style="color:var(--cx)">REMIS ${r.sig.pRemis.toFixed(0)}%</span></div>
+      <div class="s-grade g${r.grade}" title="Ocena względem całego terminarza: A = top 10% sygnału, B = kolejne 20%">${r.grade}</div></div>`;
+  };
 
+  const fchip = (id, label) => `<div class="chip ${s27Filter === id ? 'on' : ''}" data-f="${id}">${label}</div>`;
+  el.innerHTML = `
+  <div class="section-title"><h2>🔥 Sezon zasadniczy 26/27</h2><div class="rule"></div></div>
+  <div class="s-stats">
+    <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}<span style="font-size:15px;color:var(--ink-soft)">/${D.rows.length}</span></div><div class="s">mecze sezonu zasadniczego</div></div>
+    <div class="s-stat hl"><div class="k">Łamaki w sezonie</div><div class="v">${done.length ? fmtPct(lam, done.length, 0) : '—'}</div><div class="s">${lam}/${done.length} · średnia historyczna ${base.toFixed(1)}%</div></div>
+    <div class="s-stat"><div class="k">1/2 · 2/1 · X</div><div class="v">${cnt['1/2']} · ${cnt['2/1']} · ${cnt['X']}</div><div class="s">w tym sezonie</div></div>
+    <div class="s-stat"><div class="k">${fmtDate(s27Day)}</div><div class="v">${D.byDay[s27Day].length}<span style="font-size:15px;color:var(--ink-soft)"> mecz.</span></div><div class="s">${dayDone} rozegranych · ocena A: ${D.byDay[s27Day].filter(r => r.grade === 'A').length}</div></div>
+  </div>
+  <div class="s-note">⚠ Sygnały to model statystyczny — backtest pokazał słabą moc predykcyjną (patrz zakładka Prognoza). Ocena A/B/C jest <b>względna</b>: porównuje mecz z resztą terminarza, nie obiecuje trafienia. Terminarz bez godzin — dni wg czasu polskiego.</div>
+  <div class="s-days">${dayBtns}<input type="date" id="s-jump" value="${s27Day}" min="${D.days[0]}" max="${D.days[D.days.length - 1]}" style="flex:none;width:150px;font-size:12.5px;"></div>
+  <div class="s-tools"><span class="lbl">Pokaż</span>${fchip('all', 'Wszystkie')}${fchip('todo', 'Nadchodzące')}${fchip('done', 'Zakończone')}${fchip('strong', 'Ocena A + B')}</div>
+  <div class="s-layout">
+    <div class="s-list">
+      <div class="s-dayhead"><b>${dayName} ${fmtDate(s27Day)}</b><span class="mono small-note" style="margin:0;">${D.byDay[s27Day].length} meczów · posortowane wg sygnału</span></div>
+      ${dayRows.map(rowHTML).join('') || '<div class="empty-state"><div class="ico">◇</div>Brak meczów dla tego filtra.</div>'}
+    </div>
+    <div class="s-side">
+      <div class="s-panel pick"><div class="k">⭐ Typ dnia</div>
+        ${pick ? `<div class="s-pick"><div class="big">${pick.risk.toFixed(0)}%</div><div><div style="font-weight:600;">${pick.f.h} — ${pick.f.a}</div><div class="small-note" style="margin:2px 0 0;">ŁAMAK ${pick.sig.pLamak.toFixed(0)}% · REMIS ${pick.sig.pRemis.toFixed(0)}%</div></div></div>
+        <div class="s-tags" style="margin-top:10px;">${pick.sig.tags.map(t => `<span class="s-tag" title="${t.label}">${t.short}</span>`).join('')}</div>`
+          : `<div class="small-note" style="margin:0;">Wszystkie mecze tego dnia są rozegrane.</div>`}
+      </div>
+      <div class="s-panel"><div class="k">★ Top 5 dnia</div>
+        ${todo.slice(0, 5).map((r, n) => `<div class="s-top" data-i="${r.i}"><span class="n">${n + 1}</span><span class="t">${r.f.h} – ${r.f.a}</span><span class="sc">${r.risk.toFixed(0)}</span></div>`).join('') || '<div class="small-note" style="margin:0;">Brak nadchodzących meczów.</div>'}
+      </div>
+      <div class="s-panel"><div class="k">Rozliczenie · 3 ostatnie dni</div>
+        ${settle || '<div class="small-note" style="margin:0;">Brak rozegranych dni.</div>'}
+        <div class="small-note">sezon 26/27: ${done.length ? `${fmtPct(lam, done.length, 1)} łamaków (${lam}/${done.length})` : 'jeszcze bez wyników'}</div>
+      </div>
+    </div>
+  </div>`;
+
+  el.querySelectorAll('[data-day]').forEach(b => { b.onclick = () => { s27Day = b.dataset.day; renderSezon2627(); }; });
+  el.querySelectorAll('[data-f]').forEach(c => { c.onclick = () => { s27Filter = c.dataset.f; renderSezon2627(); }; });
+  document.getElementById('s-jump').onchange = e => {
+    const v = e.target.value; if (!v) return;
+    s27Day = D.days.find(d => d >= v) || D.days[D.days.length - 1]; renderSezon2627();
+  };
+  el.querySelectorAll('[data-i]').forEach(x => {
+    x.onclick = () => {
+      const r = D.rows[+x.dataset.i];
+      if (!TEAMS.includes(r.f.h) || !TEAMS.includes(r.f.a)) return;
+      openUpcomingForecastModal({ date_iso: r.f.d, time: '', home_team: r.f.h, away_team: r.f.a, regular: true, b2b: r.b2b });
+    };
+  });
 }
 
 function lastGamesListHTML(team) {
@@ -676,7 +728,7 @@ function h2hMonthPatternHTML(lamakGames) {
   lamakGames.forEach(g => { (byMonth[g.month] = byMonth[g.month] || []).push(g); });
   const repeatedMonths = Object.entries(byMonth).filter(([m, gs]) => gs.length >= 2);
   if (repeatedMonths.length) {
-    return `<div class="small-note" style="background:var(--orange-soft);color:#8a4a10;padding:8px 12px;border-radius:6px;margin-bottom:10px;">
+    return `<div class="small-note" style="background:var(--orange-soft);color:var(--orange);padding:8px 12px;border-radius:6px;margin-bottom:10px;">
       🔁 <b>Wzorzec do obserwacji:</b> ${repeatedMonths.map(([m, gs]) => `łamaki tej pary padały w <b>${m}</b> ${gs.length}× (${gs.map(g => fmtDate(g.date_iso)).join(', ')})`).join('; ')}.
       Przy tak małej próbce (${lamakGames.length} łamaków łącznie) to może być zbieg okoliczności, ale warto mieć oko na ten mecz właśnie w tym miesiącu w kolejnych sezonach.
     </div>`;
@@ -710,7 +762,7 @@ function h2hHistoryListHTML(teamA, teamB) {
 function openUpcomingForecastModal(fixture) {
   const sig = computeMatchSignal(fixture.home_team, fixture.away_team, false, false, fixture.date_iso);
   const fc = sig.fc;
-  const b2b = preseasonB2B(fixture);
+  const b2b = fixture.b2b || preseasonB2B(fixture);
   const box = document.getElementById('modal-box');
   box.innerHTML = `
     <div class="modal-close" onclick="closeModal()">✕</div>
@@ -720,7 +772,7 @@ function openUpcomingForecastModal(fixture) {
         <div class="modal-score" style="font-size:16px;color:#B7C2CE;">VS</div>
         <div class="modal-team">${fixture.away_team}</div>
       </div>
-      <div class="modal-meta">${fmtDate(fixture.date_iso)} · ${fixture.time} · PRESEASON — sygnał niewiarygodny, patrz zastrzeżenie</div>
+      <div class="modal-meta">${fmtDate(fixture.date_iso)} · ${fixture.regular ? 'SEZON ZASADNICZY 26/27 — model o słabej mocy predykcyjnej' : fixture.time + ' · PRESEASON — sygnał niewiarygodny, patrz zastrzeżenie'}</div>
     </div>
     <div class="modal-body">
       ${signalBoxesHTML(sig)}
@@ -728,7 +780,7 @@ function openUpcomingForecastModal(fixture) {
       <div class="card" style="margin-top:18px;">
         <h3>Szczegóły kierunkowe <span class="small-note" style="text-transform:none;font-family:'Inter',sans-serif;">(dla własnej analizy — którędy może pójść łamak)</span></h3>
         <div class="small-note">Historia: ${fixture.home_team} jako gospodarz kończy 1/2 w ${fc.hist12.toFixed(1)}% swoich meczów domowych; ${fixture.away_team} jako gość kończy 2/1 w ${fc.hist21.toFixed(1)}% meczów wyjazdowych. H2H (${fc.h2hN} spotkań w bazie): 1/2 ${fc.h2h12.toFixed(1)}%, 2/1 ${fc.h2h21.toFixed(1)}%, X ${fc.h2hX.toFixed(1)}%.
-        ${(b2b.home || b2b.away) ? `<br><br>🔁 <b>Uwaga na terminarz:</b> ${[b2b.home ? fixture.home_team : null, b2b.away ? fixture.away_team : null].filter(Boolean).join(' i ')} ${(b2b.home && b2b.away) ? 'grają' : 'gra'} inny mecz preseason w ciągu doby od tego spotkania — możliwa rotacja składu lub zmęczenie.` : ''}
+        ${(b2b.home || b2b.away) ? `<br><br>🔁 <b>Uwaga na terminarz:</b> ${[b2b.home ? fixture.home_team : null, b2b.away ? fixture.away_team : null].filter(Boolean).join(' i ')} ${(b2b.home && b2b.away) ? 'grają' : 'gra'} inny mecz ${fixture.regular ? '' : 'preseason '}w ciągu doby od tego spotkania — możliwa rotacja składu lub zmęczenie.` : ''}
         </div>
       </div>
       <div class="card" style="margin-top:18px;">
@@ -832,18 +884,167 @@ let terminarzStageFilter = 'regular';
 
 let terminarzRoundFrom = null, terminarzRoundTo = null;
 
+// ============================================================
+// KOLEJKA = SLOT LIGOWY (dzień rozgrywkowy, w którym żadna drużyna nie gra dwa razy)
+// + WZORCE KOLEJEK w Terminarzu
+// ============================================================
+function computeDaySlots(stageFilter) {
+  const stage = stageFilter === 'preseason' ? 'regular' : stageFilter;
+  const bySeason = {};
+  ALL_GAMES.filter(g => stage === 'all' || g.stage === stage).forEach(g => {
+    const s = bySeason[g.season] = bySeason[g.season] || {};
+    (s[g.date_iso] = s[g.date_iso] || []).push(g);
+  });
+  const slots = []; const byKey = {};
+  Object.keys(bySeason).sort().forEach(season => {
+    const dates = Object.keys(bySeason[season]).sort();
+    let prev = null;
+    dates.forEach((date, i) => {
+      const gs = bySeason[season][date];
+      const c = { '1/2': 0, '2/1': 0, 'X': 0 };
+      gs.forEach(g => { if (c[g.classification] !== undefined) c[g.classification]++; });
+      const sl = { season, date, k: i + 1, kMax: dates.length, n: gs.length, c12: c['1/2'], c21: c['2/1'], x: c['X'],
+        l: c['1/2'] + c['2/1'] + c['X'], dow: gs[0].day_of_week, games: gs, prev };
+      slots.push(sl); byKey[season + '|' + date] = sl; prev = sl;
+    });
+  });
+  return { slots, byKey };
+}
+
 function computeKolejkaMap(stageFilter) {
-  const bySeasonGames = {};
-  ALL_GAMES.filter(g => stageFilter === 'all' || g.stage === stageFilter).forEach(g => {
-    (bySeasonGames[g.season] = bySeasonGames[g.season] || []).push(g);
-  });
+  const { slots } = computeDaySlots(stageFilter);
   const map = {}; const maxPerSeason = {};
-  Object.entries(bySeasonGames).forEach(([season, gs]) => {
-    gs.sort((a, b) => a.date_iso.localeCompare(b.date_iso) || a.game_id.localeCompare(b.game_id));
-    gs.forEach((g, i) => { map[g.game_id] = i + 1; });
-    maxPerSeason[season] = gs.length;
-  });
+  slots.forEach(s => { s.games.forEach(g => { map[g.game_id] = s.k; }); maxPerSeason[s.season] = s.kMax; });
   return { map, maxPerSeason };
+}
+
+let terminarzSlotFilter = 'all'; // all | nolamak | withx | hi40 | afterx
+let patK = null, patDate = '', patOpen = false;
+let CUR_SLOT_BY_KEY = {};
+
+function slotAgg(list) {
+  return list.reduce((a, s) => ({ days: a.days + 1, n: a.n + s.n, l: a.l + s.l, x: a.x + s.x }), { days: 0, n: 0, l: 0, x: 0 });
+}
+function zScore(h, n, p) { return n && p > 0 && p < 1 ? (h / n - p) / Math.sqrt(p * (1 - p) / n) : 0; }
+function zTag(z) { const a = Math.abs(z); return a >= 3 ? 'sygnał' : a >= 2 ? 'słaby' : 'szum'; }
+function zCell(h, n, p) {
+  if (!n) return '—';
+  const z = zScore(h, n, p);
+  const strong = Math.abs(z) >= 2;
+  return `<b>${(100 * h / n).toFixed(0)}%</b> <span class="small-note" style="${strong ? 'color:var(--orange);font-weight:600;' : ''}">${h}/${n} · z ${z >= 0 ? '+' : ''}${z.toFixed(1)}</span>`;
+}
+
+function slotFeatures(s) {
+  const f = [];
+  f.push(['Dzień tygodnia', s.dow]);
+  f.push(['Liczba meczów w kolejce', s.n <= 4 ? '1–4 mecze' : s.n <= 8 ? '5–8 meczów' : s.n <= 11 ? '9–11 meczów' : s.n <= 14 ? '12–14 meczów' : '15+ meczów']);
+  const ph = Math.floor((s.k - 1) / 30);
+  f.push(['Faza sezonu (co 30 kolejek)', `kolejki ${ph * 30 + 1}–${ph * 30 + 30}`]);
+  f.push(['Miesiąc', monthNameFromISO(s.date)]);
+  const dom = +s.date.slice(8, 10);
+  f.push(['Część miesiąca', dom <= 10 ? '1.–10. dzień' : dom <= 20 ? '11.–20. dzień' : '21.–31. dzień']);
+  if (s.prev) {
+    f.push(['Poprzednia kolejka: dogrywki', s.prev.x > 0 ? 'była min. 1 dogrywka (X)' : 'bez X']);
+    f.push(['Poprzednia kolejka: łamaki', s.prev.l === 0 ? 'zero łamaków' : (s.prev.l / s.prev.n >= 0.4 ? '≥40% łamaków' : '1–39% łamaków')]);
+  }
+  return f;
+}
+
+function slotPassesFilter(s) {
+  if (terminarzSlotFilter === 'nolamak') return s.l === 0;
+  if (terminarzSlotFilter === 'withx') return s.x > 0;
+  if (terminarzSlotFilter === 'hi40') return s.l / s.n >= 0.4;
+  if (terminarzSlotFilter === 'afterx') return !!s.prev && s.prev.x > 0;
+  return true;
+}
+
+function renderKolejkaPatterns() {
+  const box = document.getElementById('term-patterns');
+  if (!box) return;
+  if (terminarzStageFilter === 'preseason') { box.innerHTML = ''; return; }
+  const { slots } = computeDaySlots(terminarzStageFilter);
+  const tot = slotAgg(slots);
+  if (!tot.n) { box.innerHTML = ''; return; }
+  const BL = tot.l / tot.n, BX = tot.x / tot.n;
+  const noL = slots.filter(s => s.l === 0).length, withX = slots.filter(s => s.x > 0).length;
+  const maxK = Math.max(...slots.map(s => s.kMax));
+
+  box.innerHTML = `<details class="card" id="pat-details" style="margin-bottom:14px;padding:14px 18px;" ${patOpen ? 'open' : ''}>
+    <summary style="cursor:pointer;font-family:'Oswald',sans-serif;font-size:15px;text-transform:uppercase;letter-spacing:0.02em;">Wzorce kolejek — kiedy łamią, a kiedy remis</summary>
+    <div class="small-note" style="margin:10px 0;">Kolejka = dzień rozgrywkowy ligi (K1 = pierwszy dzień sezonu). Baza dla wybranej fazy: łamak <b>${(100 * BL).toFixed(1)}%</b> meczów, X (dogrywka) <b>${(100 * BX).toFixed(1)}%</b> · ${slots.length} kolejek, ${tot.n} meczów · kolejek bez żadnego łamaka: ${(100 * noL / slots.length).toFixed(0)}%, z min. 1 dogrywką: ${(100 * withX / slots.length).toFixed(0)}%.
+    <b>z</b> = odchylenie od bazy w jednostkach błędu standardowego: |z| &lt; 2 to szum, 2–3 słaby trop, ≥ 3 dopiero coś godnego uwagi.</div>
+
+    <h3 style="margin:14px 0 8px;">1. Sprawdź kolejkę lub dzień</h3>
+    <div class="controls-row" style="margin-bottom:10px;">
+      <div class="field"><label>Numer kolejki (1–${maxK})</label><input type="number" id="pat-k" min="1" max="${maxK}" value="${patK ?? ''}" style="width:90px;"></div>
+      <div class="field"><label>albo data</label><input type="date" id="pat-date" value="${patDate}"></div>
+      <div class="field"><label>&nbsp;</label><button class="btn secondary" id="pat-clear" type="button">Wyczyść</button></div>
+    </div>
+    <div id="pat-check"></div>
+
+    <h3 style="margin:18px 0 8px;">2. Skaner schematów — co odstaje od bazy</h3>
+    <div id="pat-scan"></div>
+  </details>`;
+
+  document.getElementById('pat-details').ontoggle = e => { patOpen = e.target.open; };
+  document.getElementById('pat-k').oninput = e => { patK = +e.target.value || null; renderPatCheck(slots, BL, BX); };
+  document.getElementById('pat-date').oninput = e => { patDate = e.target.value; renderPatCheck(slots, BL, BX); };
+  document.getElementById('pat-clear').onclick = () => { patK = null; patDate = ''; renderKolejkaPatterns(); };
+  renderPatCheck(slots, BL, BX);
+  renderPatScan(slots, BL, BX);
+}
+
+function renderPatCheck(slots, BL, BX) {
+  const out = document.getElementById('pat-check');
+  const K = patK, dt = patDate;
+  if (!K && !dt) { out.innerHTML = `<div class="small-note">Wpisz numer kolejki i/lub datę, żeby zobaczyć, co działo się w podobnych kolejkach w historii.</div>`; return; }
+  const groups = [];
+  if (K) {
+    groups.push({ label: `Kolejka ${K} (we wszystkich sezonach)`, list: slots.filter(s => s.k === K) });
+    groups.push({ label: `Kolejki ${Math.max(1, K - 3)}–${K + 3}`, list: slots.filter(s => Math.abs(s.k - K) <= 3) });
+  }
+  if (dt) {
+    const DOW = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
+    const dow = DOW[new Date(dt + 'T12:00:00').getDay()], dom = +dt.slice(8, 10), mon = +dt.slice(5, 7);
+    groups.push({ label: `${dow} (każdy taki dzień tygodnia)`, list: slots.filter(s => s.dow === dow) });
+    groups.push({ label: `${dom}. dzień miesiąca`, list: slots.filter(s => +s.date.slice(8, 10) === dom) });
+    groups.push({ label: `${monthNameFromISO(dt)} (cały miesiąc)`, list: slots.filter(s => +s.date.slice(5, 7) === mon) });
+    if (K) groups.push({ label: `${dow} w okolicy kolejki ${K} (±15)`, list: slots.filter(s => s.dow === dow && Math.abs(s.k - K) <= 15) });
+  }
+  const rows = groups.map(g => ({ ...g, a: slotAgg(g.list) }));
+  const anyStrong = rows.some(r => r.a.n && (Math.abs(zScore(r.a.l, r.a.n, BL)) >= 2 || Math.abs(zScore(r.a.x, r.a.n, BX)) >= 2));
+  let html = `<div class="card" style="overflow-x:auto;padding:0;"><table><thead><tr><th>Grupa kolejek</th><th class="num">Kolejek</th><th>Łamak</th><th>X (dogrywka)</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${r.label}</td><td class="num">${r.a.days}</td><td>${zCell(r.a.l, r.a.n, BL)}</td><td>${zCell(r.a.x, r.a.n, BX)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="small-note" style="margin-top:6px;">${anyStrong ? 'Przynajmniej jedna grupa odbiega od bazy (|z| ≥ 2) — sprawdź, czy próbka jest sensowna (kolumna „Kolejek”).' : 'Żadna z grup nie odbiega istotnie od bazy — to, co widać, mieści się w zwykłym szumie.'}</div>`;
+  if (K) {
+    const per = slots.filter(s => s.k === K);
+    html += `<div style="margin-top:12px;font-family:'Oswald',sans-serif;font-size:13px;text-transform:uppercase;">Kolejka ${K} sezon po sezonie</div>
+    <div class="card" style="overflow-x:auto;padding:0;"><table><thead><tr><th>Sezon</th><th>Data</th><th class="num">Meczów</th><th class="num">1/2</th><th class="num">2/1</th><th class="num">X</th><th class="num">Łamaki</th></tr></thead><tbody>
+    ${per.map(s => `<tr><td>${s.season}</td><td class="mono">${fmtDate(s.date)} <span class="small-note">${s.dow}</span></td><td class="num">${s.n}</td>
+      <td class="num">${s.c12 ? `<span class="badge badge-12">${s.c12}</span>` : '0'}</td><td class="num">${s.c21 ? `<span class="badge badge-21">${s.c21}</span>` : '0'}</td>
+      <td class="num">${s.x ? `<span class="badge badge-x">${s.x}</span>` : '0'}</td><td class="num">${s.l}/${s.n} (${(100 * s.l / s.n).toFixed(0)}%)</td></tr>`).join('') || '<tr><td colspan="7" style="color:var(--ink-soft)">Brak takiej kolejki w wybranej fazie.</td></tr>'}
+    </tbody></table></div>`;
+  }
+  out.innerHTML = html;
+}
+
+function renderPatScan(slots, BL, BX) {
+  const out = document.getElementById('pat-scan');
+  const agg = {};
+  slots.forEach(s => slotFeatures(s).forEach(([grp, val]) => {
+    const a = agg[grp + '|' + val] = agg[grp + '|' + val] || { grp, val, days: 0, n: 0, l: 0, x: 0 };
+    a.days++; a.n += s.n; a.l += s.l; a.x += s.x;
+  }));
+  const all = Object.values(agg).filter(a => a.n >= 40).map(a => ({ ...a, zl: zScore(a.l, a.n, BL), zx: zScore(a.x, a.n, BX) }));
+  all.forEach(a => { a.m = Math.max(Math.abs(a.zl), Math.abs(a.zx)); });
+  all.sort((a, b) => b.m - a.m);
+  const expected = (all.length * 2 * 0.0455).toFixed(1);
+  const strong = all.filter(a => a.m >= 2).length;
+  out.innerHTML = `<div class="small-note" style="margin-bottom:8px;">Przetestowano ${all.length} wartości cech kolejki. Przy tylu testach samo z siebie wypadnie ok. ${expected} wyników z |z| ≥ 2 (osobno dla łamaka i X) — tu jest ich ${strong}. Gdy wynik jest bliski tej liczbie, to nie schemat, tylko przypadek.</div>
+  <div class="card" style="overflow-x:auto;padding:0;"><table><thead><tr><th>Cecha</th><th>Wartość</th><th class="num">Kolejek</th><th>Łamak</th><th>X</th><th>Ocena</th></tr></thead><tbody>
+  ${all.slice(0, 12).map(a => `<tr><td>${a.grp}</td><td>${a.val}</td><td class="num">${a.days}</td><td>${zCell(a.l, a.n, BL)}</td><td>${zCell(a.x, a.n, BX)}</td><td class="small-note">${zTag(a.m >= 0 ? (Math.abs(a.zl) >= Math.abs(a.zx) ? a.zl : a.zx) : 0)}</td></tr>`).join('')}
+  </tbody></table></div>`;
 }
 
 
@@ -949,7 +1150,7 @@ function renderTerminarz() {
         <option value="preseason" ${terminarzStageFilter === 'preseason' ? 'selected' : ''}>Preseason 26/27</option>
       </select>
     </div>
-    <div class="field"><label>Od kolejki (1 = początek sezonu, październik)</label>
+    <div class="field"><label>Od kolejki (1 = pierwszy dzień sezonu)</label>
       <input type="number" id="term-round-from" min="1" max="${globalMax}" value="${terminarzRoundFrom}" style="width:90px;">
     </div>
     <div class="field"><label>Do kolejki (max ${globalMax} = koniec sezonu)</label>
@@ -957,7 +1158,16 @@ function renderTerminarz() {
     </div>
     <div class="field"><label>&nbsp;</label><button class="btn secondary" id="term-round-reset" type="button">Cały sezon</button></div>
   </div>
-  <div class="small-note" style="margin-bottom:14px;">"Kolejka" = numer meczu w kolejności chronologicznej danego sezonu (1 = pierwszy mecz sezonu w październiku, ${globalMax} = ostatni). Ustawiasz np. 30–60 żeby zobaczyć środek sezonu, niezależnie od tego na jakie miesiące kalendarzowe to wypadnie.</div>
+  <div class="small-note" style="margin-bottom:14px;">"Kolejka" = dzień rozgrywkowy ligi w danym sezonie (1 = pierwszy dzień, ${globalMax} = ostatni). Ustawiasz np. 30–60 żeby zobaczyć środek sezonu, niezależnie od miesięcy kalendarzowych.</div>
+  <div id="term-patterns"></div>
+  <div class="controls-row" style="margin-bottom:12px;"><div class="field"><label>Typ kolejki</label>
+    <select id="term-slot">
+      <option value="all" ${terminarzSlotFilter === 'all' ? 'selected' : ''}>Wszystkie kolejki</option>
+      <option value="nolamak" ${terminarzSlotFilter === 'nolamak' ? 'selected' : ''}>Bez żadnego łamaka</option>
+      <option value="withx" ${terminarzSlotFilter === 'withx' ? 'selected' : ''}>Z min. 1 dogrywką (X)</option>
+      <option value="hi40" ${terminarzSlotFilter === 'hi40' ? 'selected' : ''}>≥40% łamaków</option>
+      <option value="afterx" ${terminarzSlotFilter === 'afterx' ? 'selected' : ''}>Po kolejce z dogrywką</option>
+    </select></div></div>
   <div class="chip-wrap" style="margin-bottom:12px;" id="term-type-chips"></div>
   <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
     <button class="btn secondary" id="term-collapse-all" type="button">Zwiń wszystko</button>
@@ -975,6 +1185,7 @@ function renderTerminarz() {
     document.querySelectorAll('#term-list .day-group').forEach(g => g.classList.remove('collapsed'));
   };
 
+  document.getElementById('term-slot').onchange = e => { terminarzSlotFilter = e.target.value; renderTerminarzList(); };
   document.getElementById('term-team').onchange = e => { terminarzTeamFilter = e.target.value; renderTerminarzList(); };
   document.getElementById('term-stage').onchange = e => { terminarzStageFilter = e.target.value; terminarzRoundFrom = null; terminarzRoundTo = null; renderTerminarz(); };
   document.getElementById('term-round-from').onchange = e => { terminarzRoundFrom = Math.max(1, +e.target.value || 1); renderTerminarzList(); };
@@ -997,6 +1208,7 @@ function renderTerminarz() {
     chipsBox.appendChild(d);
   });
 
+  renderKolejkaPatterns();
   renderTerminarzList();
 }
 
@@ -1004,6 +1216,7 @@ function renderTerminarzList() {
   const box = document.getElementById('term-list');
   if (terminarzStageFilter === 'preseason') { renderPreseasonHistory(box); return; }
   const { map: kolejkaMap } = computeKolejkaMap(terminarzStageFilter);
+  CUR_SLOT_BY_KEY = computeDaySlots(terminarzStageFilter).byKey;
 
   let games = GAMES().filter(g => terminarzStageFilter === 'all' || g.stage === terminarzStageFilter);
   if (terminarzTeamFilter !== 'all') games = games.filter(g => g.home_team === terminarzTeamFilter || g.away_team === terminarzTeamFilter);
@@ -1011,6 +1224,7 @@ function renderTerminarzList() {
   else if (terminarzTypeFilter !== 'all') games = games.filter(g => g.classification === terminarzTypeFilter);
   const rf = terminarzRoundFrom ?? 1, rt = terminarzRoundTo ?? 999;
   games = games.filter(g => { const k = kolejkaMap[g.game_id]; return k >= rf && k <= rt; });
+  if (terminarzSlotFilter !== 'all') games = games.filter(g => { const sl = CUR_SLOT_BY_KEY[g.season + '|' + g.date_iso]; return sl && slotPassesFilter(sl); });
 
   games = games.slice().sort((a, b) => b.date_iso.localeCompare(a.date_iso));
 
@@ -1093,7 +1307,7 @@ function renderDayGroups(games) {
     dayBuffer.forEach(g => { if (counts[g.classification] !== undefined) counts[g.classification]++; });
     const dow = d.day_of_week;
     html += `<div class="day-group" data-dayid="d${d.season}_${d.date_iso}_${dayIdx}">
-      <div class="day-divider" data-toggle="d${d.season}_${d.date_iso}_${dayIdx}"><span class="chev">▾</span><span class="dname">${dow}</span><span>${fmtDate(d.date_iso)}</span><span class="mono" style="color:var(--ink-soft)">· ${dayBuffer.length} mecz.</span>
+      <div class="day-divider" data-toggle="d${d.season}_${d.date_iso}_${dayIdx}"><span class="chev">▾</span><span class="dname">${dow}</span><span>${fmtDate(d.date_iso)}</span><span class="mono" style="color:var(--ink-soft)">· ${dayBuffer.length} mecz.</span>${(function () { const sl = CUR_SLOT_BY_KEY[d.season + '|' + d.date_iso]; return sl ? `<span class="mono" style="color:var(--ink-soft)">· K${sl.k} · ${sl.l}/${sl.n} łamaków (${(100 * sl.l / sl.n).toFixed(0)}%)</span>` : ''; })()}
       <div class="dcount">
         ${counts['1/2'] ? `<span class="day-pill" style="background:var(--c12-soft);color:var(--c12)">1/2 ×${counts['1/2']}</span>` : ''}
         ${counts['2/1'] ? `<span class="day-pill" style="background:var(--c21-soft);color:var(--c21)">2/1 ×${counts['2/1']}</span>` : ''}
