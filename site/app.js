@@ -114,12 +114,8 @@ const TABS = [
   { id: 'sezon2627', label: '🔥 Sezon 26/27' },
   { id: 'zakonczone', label: '✅ Zakończone' },
   { id: 'terminarz', label: '🗓 Terminarz (historia)' },
-  { id: 'druzyny', label: '🏀 Drużyny' },
-  { id: 'h2h', label: '⚔ H2H' },
-  { id: 'analiza', label: '🔎 Zależności i wzorce' },
-  { id: 'prognoza', label: '🎯 Prognoza meczu' },
-  { id: 'wnioski', label: '💡 Wnioski' },
-  { id: 'wyniki', label: '🧪 Preseason' },
+  { id: 'druzyny', label: '🏀 Drużyny i pary' },
+  { id: 'analiza', label: '🔎 Wzorce i schematy' },
 ];
 const tabsNav = document.getElementById('tabs-nav');
 TABS.forEach((t, i) => {
@@ -131,6 +127,9 @@ TABS.forEach((t, i) => {
   tabsNav.appendChild(b);
 });
 function selectTab(id) {
+  if (id === 'h2h') { druzynySub = 'h2h'; id = 'druzyny'; }
+  if (id === 'wyniki') { zkSource = 'pre'; id = 'zakonczone'; }
+  if (id === 'wnioski' || id === 'prognoza') id = 'analiza';
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + id));
   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -556,19 +555,23 @@ function classifyQuarters(q1h, q1a, q2h, q2a, q3h, q3a, q4h, q4a) {
 }
 
 // ============================================================
-// SEZON 26/27 — terminarz sezonu zasadniczego + „teczka meczu” (fakty zamiast procentów)
+// SEZON 26/27 — terminarz tygodniowy + „teczka meczu” (fakty zamiast procentów)
 // ============================================================
 const FIXTURES = (() => { try { return JSON.parse(document.getElementById('fixtures-data').textContent || '[]'); } catch (e) { return []; } })();
-const DOW_SHORT = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'];
+const DOW_SHORT = ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd'];
 const DOW_FULL = ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'];
 const CUR_SEASON = '2026-27';
 const ODD_SEASONS = new Set(['2019-20', '2020-21']); // bąbel / skrócony sezon — inny kalendarz, nie liczymy do kolejek i dat
-let s27Day = null, s27Filter = 'all', zkFilter = 'all';
+let s27Week = null, zkFilter = 'all', zkSource = 'regular';
 let S27 = null, DOS = null;
+const DAY_OPEN = {}, LAZY = {}, RK = {};
 function localIso(d = new Date()) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 function isoPlus(iso, n) { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return localIso(d); }
 function seasonDay(iso) { const y = +iso.slice(0, 4), m = +iso.slice(5, 7); const st = new Date(`${m >= 8 ? y : y - 1}-10-01T12:00:00`); return Math.round((new Date(iso + 'T12:00:00') - st) / 864e5); }
 function dayDist(a, b) { return Math.abs(seasonDay(a) - seasonDay(b)); }
+function weekStart(d) { const dt = new Date(d + 'T12:00:00'); return isoPlus(d, -((dt.getDay() + 6) % 7)); }
+function dowName(d) { return DOW_FULL[new Date(d + 'T12:00:00').getDay()]; }
+const dm = d => `${d.slice(8)}.${d.slice(5, 7)}`;
 
 // ---------- 1. Terminarz + wyniki ----------
 function s27Build() {
@@ -578,7 +581,7 @@ function s27Build() {
   FIXTURES.forEach(f => { busy.add(f.h + '|' + f.d); busy.add(f.a + '|' + f.d); });
   const used = new Set();
   const days = [...new Set(FIXTURES.map(f => f.d))].sort();
-  const cnt = {};
+  const cnt = {}, last = {};
   const rows = FIXTURES.map((f, i) => {
     const known = TEAMS.includes(f.h) && TEAMS.includes(f.a);
     let res = null, synth = false;
@@ -597,17 +600,20 @@ function s27Build() {
     if (res && !isLamak(res.cls)) res.cls = 'brak_lamaka';
     const p1 = isoPlus(f.d, -1), p2 = isoPlus(f.d, -2), p3 = isoPlus(f.d, -3);
     const t3 = t => busy.has(t + '|' + p1) && [p2, p3].some(x => busy.has(t + '|' + x));
-    const ctx = { b2bH: busy.has(f.h + '|' + p1), b2bA: busy.has(f.a + '|' + p1), t3H: t3(f.h), t3A: t3(f.a) };
+    const gap = t => last[t] ? Math.round((new Date(f.d) - new Date(last[t])) / 864e5) - 1 : null;
+    const ctx = { b2bH: busy.has(f.h + '|' + p1), b2bA: busy.has(f.a + '|' + p1), t3H: t3(f.h), t3A: t3(f.a), restH: gap(f.h), restA: gap(f.a) };
+    last[f.h] = f.d; last[f.a] = f.d;
     const nH = (cnt[f.h] = (cnt[f.h] || 0) + 1), nA = (cnt[f.a] = (cnt[f.a] || 0) + 1);
     return { i, f, known, res, synth, ctx, k: days.indexOf(f.d) + 1, nH, nA, dos: null };
   });
   const byDay = {};
   rows.forEach(r => { (byDay[r.f.d] = byDay[r.f.d] || []).push(r); });
-  S27 = { rows, byDay, days };
+  const weeks = [...new Set(days.map(weekStart))].sort();
+  S27 = { rows, byDay, days, weeks };
   return S27;
 }
 
-// ---------- 2. Indeks historii do „teczek” ----------
+// ---------- 2. Indeks historii ----------
 function binomTail(k, n, p, upper) {
   if (!n) return 1;
   p = Math.min(0.999, Math.max(0.001, p));
@@ -630,67 +636,91 @@ function mkFact(scope, short, label, hits, n, base, detail, kind = 'L', who = ''
 function gchips(list) {
   return list.map(g => `<span class="gc ${g.l ? (g.cls === '1/2' ? 'c12' : g.cls === '2/1' ? 'c21' : 'cx') : 'cn'}" title="${g.season} · ${fmtDate(g.d)} · ${g.opp ? 'vs ' + g.opp : g.h + ' – ' + g.a}">${g.l ? g.cls : '–'}</span>`).join('');
 }
+const restB = x => (x == null ? null : x <= 0 ? 0 : x >= 3 ? 3 : x);
+const restLab = b => (b === 0 ? 'back-to-back' : b === 1 ? '1 dzień przerwy' : b === 2 ? '2 dni przerwy' : '3+ dni przerwy');
+const rankB = r => (r <= 5 ? '1–5' : r <= 10 ? '6–10' : r <= 15 ? '11–15' : r <= 20 ? '16–20' : r <= 25 ? '21–25' : '26–30');
+const diffB = d => (d <= 4 ? '0–4' : d <= 9 ? '5–9' : d <= 14 ? '10–14' : '15+');
 
 function dosIndex() {
   if (DOS) return DOS;
   const D = s27Build();
   const kMap = computeKolejkaMap('regular').map;
   const recs = [];
+  const rd = v => (v == null || v > 14 ? null : v);
   ALL_GAMES.filter(g => g.stage === 'regular').forEach(g => {
     let k = kMap[g.game_id] || 0;
     if (g.season === CUR_SEASON) k = D.days.indexOf(D.days.find(x => x >= g.date_iso)) + 1;
     recs.push({ d: g.date_iso, season: g.season, h: g.home_team, a: g.away_team, cls: g.classification, k, dow: g.day_of_week,
-      hb2b: !!g.home_ctx.back_to_back, ab2b: !!g.away_ctx.back_to_back, h3: !!g.home_ctx.three_in_four_days, a3: !!g.away_ctx.three_in_four_days, hw: g.winner === 'home' });
+      hb2b: !!g.home_ctx.back_to_back, ab2b: !!g.away_ctx.back_to_back, h3: !!g.home_ctx.three_in_four_days, a3: !!g.away_ctx.three_in_four_days,
+      hw: g.final_home > g.final_away, hrest: rd(g.home_ctx.rest_days), arest: rd(g.away_ctx.rest_days) });
   });
   D.rows.filter(r => r.res && r.synth).forEach(r => {
-    recs.push({ d: r.f.d, season: CUR_SEASON, h: r.f.h, a: r.f.a, cls: r.res.cls, k: r.k, dow: DOW_FULL[new Date(r.f.d + 'T12:00:00').getDay()],
-      hb2b: r.ctx.b2bH, ab2b: r.ctx.b2bA, h3: r.ctx.t3H, a3: r.ctx.t3A, hw: r.res.fh > r.res.fa });
+    recs.push({ d: r.f.d, season: CUR_SEASON, h: r.f.h, a: r.f.a, cls: r.res.cls, k: r.k, dow: dowName(r.f.d),
+      hb2b: r.ctx.b2bH, ab2b: r.ctx.b2bA, h3: r.ctx.t3H, a3: r.ctx.t3A, hw: r.res.fh > r.res.fa, hrest: rd(r.ctx.restH), arest: rd(r.ctx.restA) });
   });
   recs.sort((a, b) => a.d.localeCompare(b.d));
-  recs.forEach(r => { r.l = isLamak(r.cls); r.x = r.cls === 'X'; });
-  const TG = {}, cs = {};
-  recs.forEach(r => [[r.h, true, r.hb2b, r.h3, r.hw, r.a], [r.a, false, r.ab2b, r.a3, !r.hw, r.h]].forEach(([t, home, b2b, t3, won, opp]) => {
-    const key = t + '|' + r.season, n = (cs[key] = (cs[key] || 0) + 1);
+  recs.forEach(r => { r.l = isLamak(r.cls); r.x = r.cls === 'X'; r.hr = null; r.ar = null; });
+  // miejsce w tabeli (wg % zwycięstw) tuż przed meczem — liczone dla każdej daty osobno
+  let st = {}, cs = null;
+  for (let i = 0; i < recs.length;) {
+    let j = i; while (j < recs.length && recs[j].season === recs[i].season && recs[j].d === recs[i].d) j++;
+    if (recs[i].season !== cs) { cs = recs[i].season; st = {}; }
+    const order = Object.entries(st).map(([t, v]) => [t, v.w / (v.w + v.l), v.w + v.l]).sort((a, b) => b[1] - a[1] || b[2] - a[2] || a[0].localeCompare(b[0]));
+    const rank = {}, gp = {}; order.forEach(([t, , n], ix) => { rank[t] = ix + 1; gp[t] = n; });
+    for (let q = i; q < j; q++) { const r = recs[q]; if ((gp[r.h] || 0) >= 8 && (gp[r.a] || 0) >= 8) { r.hr = rank[r.h]; r.ar = rank[r.a]; } }
+    for (let q = i; q < j; q++) { const r = recs[q]; (st[r.h] = st[r.h] || { w: 0, l: 0 }); (st[r.a] = st[r.a] || { w: 0, l: 0 }); if (r.hw) { st[r.h].w++; st[r.a].l++; } else { st[r.a].w++; st[r.h].l++; } }
+    i = j;
+  }
+  const TG = {}, cn = {};
+  recs.forEach(r => [[r.h, true, r.hb2b, r.h3, r.hw, r.a, r.hr, r.hrest], [r.a, false, r.ab2b, r.a3, !r.hw, r.h, r.ar, r.arest]].forEach(([t, home, b2b, t3, won, opp, rk, rest]) => {
+    const key = t + '|' + r.season, n = (cn[key] = (cn[key] || 0) + 1);
     const list = TG[t] = TG[t] || [];
     const pv = list.length && list[list.length - 1].season === r.season ? list[list.length - 1] : null;
-    list.push({ d: r.d, season: r.season, k: r.k, dow: r.dow, l: r.l, x: r.x, cls: r.cls, home, opp, n, b2b, t3, w: won,
+    list.push({ d: r.d, season: r.season, k: r.k, dow: r.dow, l: r.l, x: r.x, cls: r.cls, home, opp, n, b2b, t3, w: won, rk, rest,
       prevL: pv ? pv.l : null, ws: pv && pv.w ? pv.ws + 1 : 0, ls: pv && !pv.w ? pv.ls + 1 : 0 });
   }));
   const BL = recs.filter(r => r.l).length / recs.length, BX = recs.filter(r => r.x).length / recs.length;
   DOS = { recs, TG, BL, BX, slots: computeDaySlots('regular').slots };
   return DOS;
 }
+function cutIdx(d) { const R = dosIndex().recs; let lo = 0, hi = R.length; while (lo < hi) { const m = (lo + hi) >> 1; if (R[m].d < d) lo = m + 1; else hi = m; } return lo; }
+function curRanks(d) {
+  if (RK[d]) return RK[d];
+  const st = {};
+  dosIndex().recs.forEach(r => { if (r.season !== CUR_SEASON || r.d >= d) return; (st[r.h] = st[r.h] || { w: 0, l: 0 }); (st[r.a] = st[r.a] || { w: 0, l: 0 }); if (r.hw) { st[r.h].w++; st[r.a].l++; } else { st[r.a].w++; st[r.h].l++; } });
+  const order = Object.entries(st).map(([t, v]) => [t, v.w / (v.w + v.l), v.w + v.l]).sort((a, b) => b[1] - a[1] || b[2] - a[2] || a[0].localeCompare(b[0]));
+  const rank = {}, gp = {}; order.forEach(([t, , n], ix) => { rank[t] = ix + 1; gp[t] = n; });
+  return (RK[d] = { rank, gp });
+}
 
-function dayFacts(d, K, N) {
-  const I = dosIndex(), D = s27Build();
-  const dow = DOW_FULL[new Date(d + 'T12:00:00').getDay()];
-  const prior = I.recs.filter(r => r.d < d && r.season !== CUR_SEASON);
-  const priorCal = prior.filter(r => !ODD_SEASONS.has(r.season));
+function dayFacts(d, K, N, prior) {
+  const I = dosIndex(), D = s27Build(), dow = dowName(d);
+  const hist = prior.filter(r => r.season !== CUR_SEASON), cal0 = hist.filter(r => !ODD_SEASONS.has(r.season));
   const out = [], L = a => a.filter(r => r.l).length;
-  const kk = priorCal.filter(r => r.k === K);
+  const per = a => [...new Set(a.map(r => r.season))].map(s => { const b = a.filter(r => r.season === s); return `${s.slice(2)}: <b>${L(b)}/${b.length}</b>`; }).join(' · ');
+  const kk = cal0.filter(r => r.k === K);
   if (kk.length) {
-    const per = [...new Set(kk.map(r => r.season))].map(s => { const a = kk.filter(r => r.season === s); return `${s.slice(2)}: <b>${L(a)}/${a.length}</b>`; }).join(' · ');
-    out.push(mkFact('day', 'kolejka', `Kolejka ${K} ligi w poprzednich sezonach`, L(kk), kk.length, I.BL, per));
-    out.push(mkFact('day', 'kolejka X', `Dogrywki (X) w kolejce ${K}`, kk.filter(r => r.x).length, kk.length, I.BX, '', 'X'));
+    out.push(mkFact('day', `kolejka ${K}`, `Kolejka ${K} ligi w poprzednich sezonach`, L(kk), kk.length, I.BL, per(kk)));
+    out.push(mkFact('day', `kolejka ${K} X`, `Dogrywki (X) w kolejce ${K}`, kk.filter(r => r.x).length, kk.length, I.BX, '', 'X'));
   }
-  const wd = prior.filter(r => r.dow === dow);
-  out.push(mkFact('day', 'dzień tyg.', `${dow} — cała liga`, L(wd), wd.length, I.BL));
-  const cal = priorCal.filter(r => dayDist(r.d, d) <= 1);
-  if (cal.length) out.push(mkFact('day', 'data', `Ta data kalendarzowa ±1 dzień`, L(cal), cal.length, I.BL, [...new Set(cal.map(r => r.season))].map(s => { const a = cal.filter(r => r.season === s); return `${s.slice(2)}: <b>${L(a)}/${a.length}</b>`; }).join(' · ')));
+  const wd = hist.filter(r => r.dow === dow);
+  out.push(mkFact('day', dow.toLowerCase(), `${dow} — cała liga`, L(wd), wd.length, I.BL));
+  const cal = cal0.filter(r => dayDist(r.d, d) <= 1);
+  if (cal.length) out.push(mkFact('day', 'ta data', `Ta data kalendarzowa ±1 dzień`, L(cal), cal.length, I.BL, per(cal)));
   const sz = I.slots.filter(s => s.season !== CUR_SEASON && !ODD_SEASONS.has(s.season) && Math.abs(s.n - N) <= 1);
-  if (sz.length) out.push(mkFact('day', 'wielkość', `Kolejki z ${N}±1 meczami`, sz.reduce((a, s) => a + s.l, 0), sz.reduce((a, s) => a + s.n, 0), I.BL, `${sz.length} takich kolejek w historii`));
+  if (sz.length) out.push(mkFact('day', `${N} meczów`, `Kolejki z ${N}±1 meczami`, sz.reduce((a, s) => a + s.l, 0), sz.reduce((a, s) => a + s.n, 0), I.BL, `${sz.length} takich kolejek w historii`));
   const yd = D.byDay[D.days[D.days.indexOf(d) - 1]];
   if (yd) { const pr = yd.filter(r => r.res); if (pr.length >= 3) out.push(mkFact('day', 'wczoraj', `Poprzednia kolejka (ten sezon)`, pr.filter(r => isLamak(r.res.cls)).length, pr.length, I.BL, 'ile łamaków było dzień wcześniej')); }
   return out;
 }
 
-function teamFacts(side, T, isHome, n, K, d, b2b, t3) {
+function teamFacts(side, T, isHome, n, K, d, b2b, t3, rest, rank) {
   const I = dosIndex();
   const all = (I.TG[T] || []).filter(g => g.d < d);
   if (all.length < 5) return [];
   const prev = all.filter(g => g.season !== CUR_SEASON && !ODD_SEASONS.has(g.season));
   const base = all.filter(g => g.l).length / all.length;
-  const dow = DOW_FULL[new Date(d + 'T12:00:00').getDay()];
+  const dow = dowName(d);
   const nm = T.split(' ').pop(), sc = side, f = [];
   const mk = (a1, a2, a3, a4, a5, a6, a7, a8) => mkFact(a1, a2, a3, a4, a5, a6, a7, a8 || 'L', nm);
   const L = a => a.filter(g => g.l).length;
@@ -705,7 +735,7 @@ function teamFacts(side, T, isHome, n, K, d, b2b, t3) {
   const wd = all.filter(g => g.dow === dow);
   f.push(mk(sc, dow.slice(0, 3).toLowerCase() + '.', `${nm}: mecze w dzień „${dow}”`, L(wd), wd.length, base));
   const cal = prev.filter(g => dayDist(g.d, d) <= 2);
-  if (cal.length) f.push(mk(sc, 'data', `${nm}: ta data kalendarzowa ±2 dni`, L(cal), cal.length, base, gchips(cal)));
+  if (cal.length) f.push(mk(sc, 'ta data', `${nm}: ta data kalendarzowa ±2 dni`, L(cal), cal.length, base, gchips(cal)));
   const role = all.filter(g => g.home === isHome);
   f.push(mk(sc, isHome ? 'u siebie' : 'wyjazd', `${nm}: mecze ${isHome ? 'u siebie' : 'na wyjeździe'}`, L(role), role.length, base));
   const lastG = all[all.length - 1];
@@ -713,6 +743,9 @@ function teamFacts(side, T, isHome, n, K, d, b2b, t3) {
   f.push(mk(sc, lastG.l ? 'po łamaku' : 'po NIC', `${nm}: po meczu ${lastG.l ? 'z łamakiem' : 'bez łamaka'} (ostatni: ${lastG.cls === 'brak_lamaka' ? 'NIC' : lastG.cls})`, L(aft), aft.length, base));
   if (b2b) { const a = all.filter(g => g.b2b); f.push(mk(sc, 'b2b', `${nm}: back-to-back`, L(a), a.length, base)); }
   if (t3) { const a = all.filter(g => g.t3); f.push(mk(sc, '3 w 4 dni', `${nm}: 3 mecze w 4 dni`, L(a), a.length, base)); }
+  const rb = restB(rest);
+  if (rb != null && !b2b) { const a = all.filter(g => restB(g.rest) === rb); f.push(mk('table', 'odpoczynek', `${nm}: przy odpoczynku „${restLab(rb)}”`, L(a), a.length, base)); }
+  if (rank) { const a = all.filter(g => g.rk && Math.abs(g.rk - rank) <= 2); f.push(mk('table', `miejsce ${rank}.`, `${nm}: gdy jest na miejscu ${rank}. ±2 w tabeli`, L(a), a.length, base)); }
   const ws = lastG.w ? lastG.ws + 1 : 0, ls = lastG.w ? 0 : lastG.ls + 1;
   if (ws >= 3) { const a = all.filter(g => g.ws >= 3); f.push(mk(sc, `seria ${ws}W`, `${nm}: po serii 3+ zwycięstw (teraz ${ws})`, L(a), a.length, base)); }
   if (ls >= 2) { const a = all.filter(g => g.ls >= 2); f.push(mk(sc, `seria ${ls}P`, `${nm}: po serii 2+ porażek (teraz ${ls})`, L(a), a.length, base)); }
@@ -721,9 +754,9 @@ function teamFacts(side, T, isHome, n, K, d, b2b, t3) {
   return f;
 }
 
-function pairFacts(h, a, d) {
+function pairFacts(h, a, d, prior) {
   const I = dosIndex();
-  const pg = I.recs.filter(r => r.d < d && ((r.h === h && r.a === a) || (r.h === a && r.a === h)));
+  const pg = prior.filter(r => (r.h === h && r.a === a) || (r.h === a && r.a === h));
   if (!pg.length) return [];
   const bs = t => { const g = (I.TG[t] || []).filter(x => x.d < d); return g.length ? g.filter(x => x.l).length / g.length : I.BL; };
   const base = (bs(h) + bs(a)) / 2, L = x => x.filter(r => r.l).length;
@@ -740,15 +773,46 @@ function pairFacts(h, a, d) {
   return out;
 }
 
+function tableFacts(row, prior) {
+  const f = row.f, I = dosIndex(), out = [], L = a => a.filter(r => r.l).length;
+  const rk = curRanks(f.d), rH = rk.rank[f.h], rA = rk.rank[f.a];
+  row.rankH = (rk.gp[f.h] || 0) >= 8 ? rH : null; row.rankA = (rk.gp[f.a] || 0) >= 8 ? rA : null;
+  if (row.rankH && row.rankA) {
+    const wr = prior.filter(r => r.hr && r.ar);
+    let a = wr.filter(r => rankB(r.hr) === rankB(rH));
+    out.push(mkFact('table', `gosp. ${rankB(rH)}`, `Gospodarz z miejsca ${rankB(rH)} (jest ${rH}.) — cała liga`, L(a), a.length, I.BL));
+    a = wr.filter(r => rankB(r.ar) === rankB(rA));
+    out.push(mkFact('table', `gość ${rankB(rA)}`, `Gość z miejsca ${rankB(rA)} (jest ${rA}.) — cała liga`, L(a), a.length, I.BL));
+    const df = Math.abs(rH - rA);
+    a = wr.filter(r => diffB(Math.abs(r.hr - r.ar)) === diffB(df));
+    out.push(mkFact('table', `różnica ${diffB(df)}`, `Różnica miejsc w tabeli ${diffB(df)} (jest ${df}) — cała liga`, L(a), a.length, I.BL));
+    a = wr.filter(r => Math.abs(r.hr - rH) <= 2 && Math.abs(r.ar - rA) <= 2);
+    out.push(mkFact('table', `${rH}. vs ${rA}.`, `Para miejsc ${rH}. vs ${rA}. (±2) — cała liga`, L(a), a.length, I.BL));
+  }
+  const rH0 = restB(row.ctx.restH), rA0 = restB(row.ctx.restA);
+  if (rH0 != null && rA0 != null) {
+    const wr = prior.filter(r => r.hrest != null && r.arest != null);
+    let a = wr.filter(r => restB(r.hrest) === rH0 && restB(r.arest) === rA0);
+    out.push(mkFact('table', 'odpoczynek pary', `Odpoczynek: gospodarz ${restLab(rH0)}, gość ${restLab(rA0)} — cała liga`, L(a), a.length, I.BL));
+    a = wr.filter(r => restB(r.hrest) === rH0); out.push(mkFact('table', 'odp. gosp.', `Gospodarz: ${restLab(rH0)} — cała liga`, L(a), a.length, I.BL));
+    a = wr.filter(r => restB(r.arest) === rA0); out.push(mkFact('table', 'odp. gość', `Gość: ${restLab(rA0)} — cała liga`, L(a), a.length, I.BL));
+  }
+  return out;
+}
+
 function dossierFor(row) {
   if (row.dos) return row.dos;
   const f = row.f, I = dosIndex();
+  const prior = I.recs.slice(0, cutIdx(f.d));
   const N = s27Build().byDay[f.d].length;
+  const rk = curRanks(f.d);
+  const rH = (rk.gp[f.h] || 0) >= 8 ? rk.rank[f.h] : null, rA = (rk.gp[f.a] || 0) >= 8 ? rk.rank[f.a] : null;
   const facts = [
-    ...teamFacts('home', f.h, true, row.nH, row.k, f.d, row.ctx.b2bH, row.ctx.t3H),
-    ...teamFacts('away', f.a, false, row.nA, row.k, f.d, row.ctx.b2bA, row.ctx.t3A),
-    ...pairFacts(f.h, f.a, f.d),
-    ...dayFacts(f.d, row.k, N)];
+    ...teamFacts('home', f.h, true, row.nH, row.k, f.d, row.ctx.b2bH, row.ctx.t3H, row.ctx.restH, rH),
+    ...teamFacts('away', f.a, false, row.nA, row.k, f.d, row.ctx.b2bA, row.ctx.t3A, row.ctx.restA, rA),
+    ...pairFacts(f.h, f.a, f.d, prior),
+    ...tableFacts(row, prior),
+    ...dayFacts(f.d, row.k, N, prior)];
   const hot = facts.filter(x => x.dir === 'hot' && x.kind === 'L').sort((a, b) => a.p - b.p);
   const hotX = facts.filter(x => x.dir === 'hot' && x.kind === 'X');
   const cold = facts.filter(x => x.dir === 'cold' && x.kind === 'L');
@@ -756,7 +820,7 @@ function dossierFor(row) {
   return row.dos;
 }
 
-function chipFact(x, row) {
+function chipFact(x) {
   return `<span class="s-tag ${x.kind === 'X' ? 'tx' : ''}" title="${x.label} — ${x.hits}/${x.n}">${x.who ? x.who + ' · ' : ''}${x.short} <b>${x.hits}/${x.n}</b></span>`;
 }
 
@@ -765,11 +829,12 @@ function factCard(x, compact) {
   const r = 100 * x.rate, b = 100 * x.base, diff = r - b;
   const ico = x.dir === 'hot' ? '🔥' : x.dir === 'cold' ? '❄' : '';
   const verdict = x.dir === 'hot' ? `<b style="color:var(--orange)">+${diff.toFixed(0)} pkt</b> ponad bazę` : x.dir === 'cold' ? `<b style="color:var(--blue)">${diff.toFixed(0)} pkt</b> poniżej bazy` : `${diff >= 0 ? '+' : ''}${diff.toFixed(0)} pkt vs baza`;
+  const odds = x.rate > 0 && x.n >= 3 ? ` · opłaca się od kursu <b>${(1 / x.rate).toFixed(2)}</b>` : '';
   return `<div class="fc ${x.dir || ''} ${x.kind === 'X' ? 'kx' : ''}">
     <div class="fc-top"><span class="fc-label">${x.label}</span>${ico ? `<span class="fc-ico">${ico}</span>` : ''}</div>
     <div class="fc-main"><b>${x.hits}/${x.n}</b><span>${r.toFixed(0)}%</span><em>${x.kind === 'X' ? 'dogrywek' : 'łamaków'}</em></div>
     <div class="fc-bar" title="Pasek = wynik, kreska = baza ${b.toFixed(0)}%"><i style="width:${Math.min(100, r)}%"></i><u style="left:${Math.min(100, b)}%"></u></div>
-    <div class="fc-sub">baza ${b.toFixed(0)}% · ${verdict}</div>
+    <div class="fc-sub">baza ${b.toFixed(0)}% · ${verdict}${odds}</div>
     ${!compact && x.detail ? `<div class="fc-detail">${x.detail}</div>` : ''}
   </div>`;
 }
@@ -781,15 +846,16 @@ function openMatchDossier(row) {
   const by = sc => D.facts.filter(x => x.scope === sc && x.n > 0);
   const hotAll = D.facts.filter(x => x.dir === 'hot');
   const exp = (0.08 * D.M * 0.8).toFixed(1);
-  const tabs = [['top', '🔥 Najważniejsze', hotAll], ['home', '🏠 ' + f.h.split(' ').pop(), by('home')], ['away', '✈ ' + f.a.split(' ').pop(), by('away')], ['pair', '⚔ Para', by('pair')], ['day', '🗓 Dzień', by('day')], ['hist', '📜 Spotkania', null]];
+  const tabs = [['top', '🔥 Najważniejsze', hotAll], ['home', '🏠 ' + f.h.split(' ').pop(), by('home')], ['away', '✈ ' + f.a.split(' ').pop(), by('away')], ['pair', '⚔ Para', by('pair')], ['table', '📊 Tabela i odpoczynek', by('table')], ['day', '🗓 Dzień', by('day')], ['hist', '📜 Spotkania', null]];
   const box = document.getElementById('modal-box');
+  const rk = row.rankH ? ` · tabela: #${row.rankH} vs #${row.rankA}` : '';
   box.innerHTML = `
     <div class="modal-close" onclick="closeModal()">✕</div>
     <div class="modal-header ${res ? 'acc-' + (res.cls === '1/2' ? 'c12' : res.cls === '2/1' ? 'c21' : res.cls === 'X' ? 'cx' : 'cnone') : 'acc-cnone'}">
       <div class="modal-matchup"><div class="modal-team">${f.h}</div>
         <div class="modal-score" style="${res ? '' : 'font-size:16px;color:var(--ink-soft);'}">${res ? `${res.fh}:${res.fa}` : 'VS'}</div>
         <div class="modal-team">${f.a}</div></div>
-      <div class="modal-meta">${fmtDate(f.d)} · kolejka K${row.k} · mecz nr ${row.nH} (gosp.) / ${row.nA} (gość)${res ? ` · przerwa ${res.halfH}:${res.halfA} · <b>${clsLabel(res.cls)}</b>` : ''}</div>
+      <div class="modal-meta">${fmtDate(f.d)} · kolejka K${row.k} · mecz nr ${row.nH} / ${row.nA}${rk}${res ? ` · przerwa ${res.halfH}:${res.halfA} · <b>${clsLabel(res.cls)}</b>` : ''}</div>
     </div>
     <div style="padding:16px 22px 24px;">
       <div class="fc-sum">
@@ -798,7 +864,7 @@ function openMatchDossier(row) {
         <div><b>${D.M}</b><span>sprawdzonych</span></div>
         <div><b>~${exp}</b><span>gorących z samego przypadku</span></div>
       </div>
-      <div class="small-note" style="margin:8px 0 14px;">Każda karta: <b>ile razy było / ile meczów sprawdzono</b>. Pasek to wynik, kreska to baza (jak często ta drużyna łamie w ogóle). 🔥 = min. +15 pkt ponad bazę i p ≤ 8%. ${res ? 'Fakty liczone wyłącznie z meczów sprzed tej daty.' : ''}</div>
+      <div class="small-note" style="margin:8px 0 14px;">Karta: <b>ile razy było / ile meczów</b>. Pasek = wynik, kreska = baza. 🔥 = min. +15 pkt ponad bazę i p ≤ 8%. „Opłaca się od kursu” = kurs, powyżej którego ten wynik historycznie by się zwracał. ${res ? 'Fakty liczone tylko z meczów sprzed tej daty.' : ''}</div>
       <div class="fc-tabs">${tabs.map((t, i) => `<button class="fc-tab ${i === 0 ? 'on' : ''}" data-t="${t[0]}">${t[1]}${t[2] ? `<small>${t[2].length}</small>` : ''}</button>`).join('')}</div>
       <div id="fc-body"></div>
     </div>`;
@@ -814,148 +880,249 @@ function openMatchDossier(row) {
   document.getElementById('modal-overlay').classList.add('open');
 }
 
-// ---------- 4. Widok: Sezon 26/27 ----------
+// ---------- 4. Dni zwijane (wspólne dla Sezonu i Zakończonych) ----------
 function heatClass(n) { return n >= 5 ? 'h3' : n >= 3 ? 'h2' : n >= 1 ? 'h1' : 'h0'; }
+function dayOpen(key, def) { return key in DAY_OPEN ? DAY_OPEN[key] : def; }
+function dayBlockHTML(key, head, bodyFn, open) {
+  LAZY[key] = bodyFn;
+  return `<section class="s-dayblock ${open ? '' : 'closed'}" data-key="${key}"><div class="s-dayhead click" data-toggle="${key}"><span class="caret">▾</span>${head}</div><div class="s-daybody" data-filled="${open ? 1 : 0}">${open ? bodyFn() : ''}</div></section>`;
+}
+function bindDays(el, afterFill) {
+  el.querySelectorAll('[data-toggle]').forEach(h => {
+    h.onclick = () => {
+      const b = h.closest('.s-dayblock'), key = h.dataset.toggle, body = b.querySelector('.s-daybody');
+      const open = b.classList.contains('closed');
+      b.classList.toggle('closed'); DAY_OPEN[key] = open;
+      if (open && body.dataset.filled === '0') { body.innerHTML = LAZY[key](); body.dataset.filled = '1'; afterFill(body); }
+    };
+  });
+  afterFill(el);
+}
+function rowPills(rs) {
+  const c = k => rs.filter(r => r.res.cls === k).length, l = c('1/2') + c('2/1') + c('X');
+  return `<span class="day-pill" style="background:var(--orange-soft);color:var(--orange)">ŁAMAKI ${l}/${rs.length}</span>
+    <span class="day-pill" style="background:var(--c12-soft);color:var(--c12)">1/2 ×${c('1/2')}</span><span class="day-pill" style="background:var(--c21-soft);color:var(--c21)">2/1 ×${c('2/1')}</span>
+    <span class="day-pill" style="background:var(--cx-soft);color:var(--cx)">REMISY X ×${c('X')}</span><span class="day-pill" style="background:var(--cnone-soft);color:var(--cnone)">bez łamaka ×${c('brak_lamaka')}</span>`;
+}
+
+// ---------- 5. Widok: Sezon 26/27 (tygodnie → dni) ----------
+function dayInfoHTML(d, rows) {
+  const D = s27Build();
+  const k = rows[0].k;
+  const facts = dayFacts(d, k, rows.length, dosIndex().recs.slice(0, cutIdx(d))).filter(x => x.n > 0);
+  const chips = facts.map(x => `<span class="s-tag ${x.dir === 'hot' ? '' : x.dir === 'cold' ? 'cd' : 'nt'}" title="${x.label} — ${x.hits}/${x.n} (${(100 * x.rate).toFixed(0)}%, baza ${(100 * x.base).toFixed(0)}%)">${x.dir === 'hot' ? '🔥 ' : x.dir === 'cold' ? '❄ ' : ''}${x.short} <b>${x.hits}/${x.n}</b></span>`).join('');
+  const prevDays = D.days.filter(x => x < d && D.byDay[x].some(r => r.res)).slice(-7);
+  const bars = prevDays.map(x => { const rs = D.byDay[x].filter(r => r.res), l = rs.filter(r => isLamak(r.res.cls)).length; return { x, l, n: rs.length }; });
+  const tl = bars.reduce((a, b) => a + b.l, 0), tn = bars.reduce((a, b) => a + b.n, 0);
+  const settle = bars.length ? `<div class="rz-wrap"><div class="rz-title">Rozliczenie · ${bars.length} ost. dni: <b>${tl}/${tn}</b> (${fmtPct(tl, tn, 0)})</div><div class="rz">${bars.map(b => `<div title="${dm(b.x)}: ${b.l}/${b.n} łamaków"><div class="rzbar"><i style="height:${pct(b.l, b.n)}%"></i></div><b>${b.l}/${b.n}</b><span>${dm(b.x)}</span></div>`).join('')}</div></div>` : '';
+  const cold = facts.find(x => x.dir === 'cold' && x.kind === 'L' && x.short.startsWith('kolejka')), hot = facts.find(x => x.dir === 'hot' && x.kind === 'L');
+  const todo = rows.filter(r => !r.res && r.dos).sort((a, b) => b.dos.hot.length - a.dos.hot.length || b.dos.score - a.dos.score);
+  let tip = '';
+  if (todo.length && todo[0].dos.hot.length >= 2) tip = `Najwięcej zbieżności: <b>${todo[0].f.h} – ${todo[0].f.a}</b> (🔥${todo[0].dos.hot.length}${todo[0].dos.hot[0] ? ': ' + todo[0].dos.hot[0].label : ''}).`;
+  else if (cold) tip = `Kolejka ${k} historycznie rzadko łamie (${(100 * cold.rate).toFixed(0)}% vs ${(100 * cold.base).toFixed(0)}% bazy) — dzień raczej „zimny”.`;
+  else if (hot) tip = `${hot.label}: ${hot.hits}/${hot.n} — dzień historycznie „gorący”.`;
+  else tip = 'Brak wyraźnych schematów dla tego dnia — liga zachowuje się tu jak średnia.';
+  return `<div class="s-dayinfo"><div class="s-tags">${chips}</div>${settle}<div class="s-tip">💡 ${tip}</div></div>`;
+}
+
+function seasonRowHTML(r) {
+  const f = r.f, dd = dossierFor(r), res = r.res;
+  const tags = [];
+  if (r.ctx.b2bH || r.ctx.b2bA) tags.push(`<span class="s-tag b2b" title="Back-to-back w terminarzu">B2B ${[r.ctx.b2bH ? f.h.split(' ').pop() : null, r.ctx.b2bA ? f.a.split(' ').pop() : null].filter(Boolean).join(' + ')}</span>`);
+  dd.hot.slice(0, 3).forEach(x => tags.push(chipFact(x)));
+  dd.hotX.slice(0, 1).forEach(x => tags.push(chipFact(x)));
+  const neutral = ['H2H', `mecze ${r.nH - 1}–${r.nH + 1}`, `mecze ${r.nA - 1}–${r.nA + 1}`].map((sh, ix) => dd.facts.find(x => x.short === sh && x.n > 0 && x.dir !== 'hot' && (ix === 0 || x.scope === (ix === 1 ? 'home' : 'away'))));
+  neutral.filter(Boolean).slice(0, Math.max(0, 4 - tags.length)).forEach(x => tags.push(`<span class="s-tag nt" title="${x.label}">${x.who ? x.who + ' · ' : ''}${x.short} <b>${x.hits}/${x.n}</b></span>`));
+  const sub = (role, n, rk, rest) => `${role} · mecz ${n}${rk ? ` · #${rk}` : ''}${rest != null ? ` · odp. ${rest}` : ''}`;
+  const mid = res
+    ? `<div><span class="s-score"><b>${res.fh}:${res.fa}</b>${res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(res.cls)}">${clsLabel(res.cls)}</span><div class="s-tags" style="margin-top:5px;">${tags.join('')}</div></div>`
+    : `<div class="s-tags">${tags.join('') || '<span class="small-note">brak wyraźnych zależności</span>'}</div>`;
+  return `<div class="s-row ${res ? rowClass(res.cls) : ''} ${heatClass(dd.hot.length)}" data-i="${r.i}">
+    <div class="s-team">${f.h}<span class="vs">${sub('gosp.', r.nH, r.rankH, r.ctx.restH)}</span></div><div class="s-team">${f.a}<span class="vs">${sub('gość', r.nA, r.rankA, r.ctx.restA)}</span></div>
+    ${mid}
+    <div class="s-heat ${heatClass(dd.hot.length)}" title="Zależności wyraźnie ponad bazę (z ${dd.M} sprawdzonych)"><b>🔥 ${dd.hot.length}</b><span>z ${dd.M}</span></div></div>`;
+}
 
 function renderSezon2627() {
   const el = document.getElementById('view-sezon2627');
   const D = s27Build();
   const todayIso = localIso();
   if (!D.days.length) { el.innerHTML = `<div class="empty-state"><div class="ico">◇</div>Brak terminarza sezonu 26/27 (data/fixtures_2026_27.json).</div>`; return; }
-  if (!s27Day || !D.byDay[s27Day]) s27Day = D.days.find(d => d >= todayIso && D.byDay[d].some(r => !r.res)) || D.days.find(d => d >= todayIso) || D.days[D.days.length - 1];
-
+  if (!s27Week || !D.weeks.includes(s27Week)) {
+    const day = D.days.find(d => d >= todayIso && D.byDay[d].some(r => !r.res)) || D.days.find(d => d >= todayIso) || D.days[D.days.length - 1];
+    s27Week = weekStart(day);
+  }
   const done = D.rows.filter(r => r.res);
   const cnt = { '1/2': 0, '2/1': 0, 'X': 0 };
   done.forEach(r => { if (cnt[r.res.cls] !== undefined) cnt[r.res.cls]++; });
   const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
-  let dayRows = D.byDay[s27Day].slice();
-  dayRows.forEach(dossierFor);
-  const dayDone = dayRows.filter(r => r.res).length;
-  const allDay = dayRows.slice();
-  if (s27Filter === 'done') dayRows = dayRows.filter(r => r.res);
-  else if (s27Filter === 'todo') dayRows = dayRows.filter(r => !r.res);
-  else if (s27Filter === 'strong') dayRows = dayRows.filter(r => r.dos.hot.length >= 3);
-  dayRows.sort((a, b) => b.dos.hot.length - a.dos.hot.length || b.dos.score - a.dos.score);
+  const wi = D.weeks.indexOf(s27Week);
+  const wkLab = w => { const dd = D.days.filter(d => weekStart(d) === w); return `${dm(dd[0])}–${dm(dd[dd.length - 1])}`; };
+  const wkBtns = D.weeks.map((w, i) => { const n = D.days.filter(d => weekStart(d) === w).reduce((a, d) => a + D.byDay[d].length, 0); return `<button class="s-day ${w === s27Week ? 'on' : ''} ${weekStart(todayIso) === w ? 'today' : ''}" data-week="${w}">Tydz. ${i + 1} · ${wkLab(w)}<small>${n}</small></button>`; }).join('');
+  const days = D.days.filter(d => weekStart(d) === s27Week);
+  const wkRows = days.flatMap(d => D.byDay[d]);
+  const wDone = wkRows.filter(r => r.res), wl = wDone.filter(r => isLamak(r.res.cls)).length;
 
-  const idx = D.days.indexOf(s27Day);
-  const dayBtns = D.days.slice(Math.max(0, idx - 3), idx + 12).map(d => {
-    const dt = new Date(d + 'T12:00:00');
-    return `<button class="s-day ${d === s27Day ? 'on' : ''} ${d === todayIso ? 'today' : ''}" data-day="${d}">${DOW_SHORT[dt.getDay()]} ${d.slice(8)}.${d.slice(5, 7)}<small>${D.byDay[d].length}</small></button>`;
-  }).join('');
-  const dayName = DOW_FULL[new Date(s27Day + 'T12:00:00').getDay()];
-  const todo = allDay.filter(r => !r.res).sort((a, b) => b.dos.hot.length - a.dos.hot.length || b.dos.score - a.dos.score);
-  const ranked = (todo.length ? todo : allDay.slice().sort((a, b) => b.dos.hot.length - a.dos.hot.length));
-  const pick = ranked[0];
-  const dayF = dayFacts(s27Day, D.byDay[s27Day][0].k, D.byDay[s27Day].length).filter(x => x.n > 0);
-  const settle = D.days.filter(d => d <= todayIso && D.byDay[d].some(r => r.res)).slice(-3).reverse().map(d => {
-    const rs = D.byDay[d].filter(r => r.res), l = rs.filter(r => isLamak(r.res.cls)).length;
-    return `<div class="s-bar"><span>${d.slice(8)}.${d.slice(5, 7)}</span><div class="tr"><i style="width:${pct(l, rs.length)}%"></i></div><span><b>${l}/${rs.length}</b> · ${fmtPct(l, rs.length, 0)}</span></div>`;
-  }).join('');
-
-  const rowHTML = r => {
-    const f = r.f, dd = r.dos, res = r.res;
-    const tags = [];
-    if (r.ctx.b2bH || r.ctx.b2bA) tags.push(`<span class="s-tag b2b" title="Back-to-back w terminarzu">B2B ${[r.ctx.b2bH ? f.h.split(' ').pop() : null, r.ctx.b2bA ? f.a.split(' ').pop() : null].filter(Boolean).join(' + ')}</span>`);
-    dd.hot.slice(0, 3).forEach(x => tags.push(chipFact(x, r)));
-    dd.hotX.slice(0, 1).forEach(x => tags.push(chipFact(x, r)));
-    const neutral = ['H2H', `mecze ${r.nH - 1}–${r.nH + 1}`, `mecze ${r.nA - 1}–${r.nA + 1}`].map((sh, ix) => dd.facts.find(x => x.short === sh && x.n > 0 && x.dir !== 'hot' && (ix === 0 || x.scope === (ix === 1 ? 'home' : 'away'))));
-    neutral.filter(Boolean).slice(0, Math.max(0, 4 - tags.length)).forEach(x => tags.push(`<span class="s-tag nt" title="${x.label}">${x.who ? x.who + ' · ' : ''}${x.short} <b>${x.hits}/${x.n}</b></span>`));
-    const mid = res
-      ? `<div><span class="s-score"><b>${res.fh}:${res.fa}</b>${res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(res.cls)}">${clsLabel(res.cls)}</span><div class="s-tags" style="margin-top:6px;">${tags.join('')}</div></div>`
-      : `<div class="s-tags">${tags.join('') || '<span class="small-note">brak wyraźnych zależności</span>'}</div>`;
-    return `<div class="s-row ${res ? rowClass(res.cls) : ''} ${heatClass(dd.hot.length)}" data-i="${r.i}">
-      <div class="s-team">${f.h}<span class="vs">gospodarz · mecz ${r.nH}</span></div><div class="s-team">${f.a}<span class="vs">gość · mecz ${r.nA}</span></div>
-      ${mid}
-      <div class="s-heat ${heatClass(dd.hot.length)}" title="Liczba zależności wyraźnie ponad bazę (z ${dd.M} sprawdzonych)"><b>🔥 ${dd.hot.length}</b><span>z ${dd.M}</span></div></div>`;
-  };
-
-  const fchip = (id, label) => `<div class="chip ${s27Filter === id ? 'on' : ''}" data-f="${id}">${label}</div>`;
   el.innerHTML = `
   <div class="section-title"><h2>🔥 Sezon zasadniczy 26/27</h2><div class="rule"></div></div>
   <div class="s-stats">
-    <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}<span style="font-size:15px;color:var(--ink-soft)">/${D.rows.length}</span></div><div class="s">mecze sezonu zasadniczego</div></div>
-    <div class="s-stat hl"><div class="k">Łamaki w sezonie</div><div class="v">${done.length ? fmtPct(lam, done.length, 0) : '—'}</div><div class="s">${lam}/${done.length} · średnia historyczna ${(baselineRate()).toFixed(1)}%</div></div>
-    <div class="s-stat"><div class="k">1/2 · 2/1 · X</div><div class="v">${cnt['1/2']} · ${cnt['2/1']} · ${cnt['X']}</div><div class="s">w tym sezonie</div></div>
-    <div class="s-stat"><div class="k">${fmtDate(s27Day)} · K${D.byDay[s27Day][0].k}</div><div class="v">${D.byDay[s27Day].length}<span style="font-size:15px;color:var(--ink-soft)"> mecz.</span></div><div class="s">${dayDone} rozegranych · ${allDay.filter(r => r.dos.hot.length >= 3).length} z ≥3 wzorcami</div></div>
+    <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}<span style="font-size:14px;color:var(--ink-soft)">/${D.rows.length}</span></div></div>
+    <div class="s-stat hl"><div class="k">Łamaki w sezonie</div><div class="v">${done.length ? fmtPct(lam, done.length, 0) : '—'}</div><div class="s">${lam}/${done.length} · historia ${baselineRate().toFixed(1)}%</div></div>
+    <div class="s-stat"><div class="k">1/2 · 2/1 · X</div><div class="v">${cnt['1/2']} · ${cnt['2/1']} · ${cnt['X']}</div></div>
+    <div class="s-stat"><div class="k">Ten tydzień (${wkLab(s27Week)})</div><div class="v">${wkRows.length}<span style="font-size:14px;color:var(--ink-soft)"> mecz.</span></div><div class="s">${wDone.length ? `rozegrane: łamaki ${wl}/${wDone.length}` : 'jeszcze bez wyników'}</div></div>
   </div>
-  <div class="s-note">🔥 = zależność z historii wyraźnie ponad bazę (np. „mecz 5 · 3/3” = w meczach nr 4–6 poprzednich sezonów ta drużyna łamała 3 razy na 3). To fakty, nie prognoza: kilka z nich wypada zawsze z samego przypadku, dlatego liczy się powtarzalność i liczebność (<b>trafione/próba</b>). Kliknij mecz, by zobaczyć całą teczkę. Terminarz bez godzin — dni wg czasu polskiego.</div>
-  <div class="s-days">${dayBtns}<input type="date" id="s-jump" value="${s27Day}" min="${D.days[0]}" max="${D.days[D.days.length - 1]}" style="flex:none;width:150px;font-size:12.5px;"></div>
-  <div class="s-tools"><span class="lbl">Pokaż</span>${fchip('all', 'Wszystkie')}${fchip('todo', 'Nadchodzące')}${fchip('done', 'Zakończone')}${fchip('strong', '🔥 ≥ 3 wzorce')}</div>
-  <div class="s-layout">
-    <div class="s-list">
-      <div class="s-dayhead"><b>${dayName} ${fmtDate(s27Day)}</b><span class="mono small-note" style="margin:0;">${D.byDay[s27Day].length} meczów · wg liczby zgodnych wzorców</span></div>
-      ${dayRows.map(rowHTML).join('') || '<div class="empty-state"><div class="ico">◇</div>Brak meczów dla tego filtra.</div>'}
-    </div>
-    <div class="s-side">
-      <div class="s-panel pick"><div class="k">⭐ Najwięcej wzorców w dniu</div>
-        ${pick ? `<div class="s-pick"><div class="big">🔥${pick.dos.hot.length}</div><div><div style="font-weight:600;">${pick.f.h} — ${pick.f.a}</div><div class="small-note" style="margin:2px 0 0;">z ${pick.dos.M} sprawdzonych zależności</div></div></div>
-        <div style="margin-top:10px;font-size:12.5px;line-height:1.6;">${pick.dos.hot.slice(0, 4).map(x => `<div>🔥 ${x.label} — <b>${x.hits}/${x.n}</b></div>`).join('') || '<span class="small-note">brak wyraźnych</span>'}</div>` : ''}
-      </div>
-      <div class="s-panel"><div class="k">★ Ranking dnia (liczba wzorców)</div>
-        ${ranked.slice(0, 5).map((r, n) => `<div class="s-top" data-i="${r.i}"><span class="n">${n + 1}</span><span class="t">${r.f.h} – ${r.f.a}</span><span class="sc">${r.dos.hot.length}</span></div>`).join('')}
-      </div>
-      <div class="s-panel"><div class="k">🗓 Ten dzień — fakty ligowe</div>
-        ${dayF.map(x => factCard(x, false)).join('') || ''}
-      </div>
-      <div class="s-panel"><div class="k">Rozliczenie · 3 ostatnie dni</div>
-        ${settle || '<div class="small-note" style="margin:0;">Brak rozegranych dni.</div>'}
-        <div class="small-note">sezon 26/27: ${done.length ? `${fmtPct(lam, done.length, 1)} łamaków (${lam}/${done.length})` : 'jeszcze bez wyników'}</div>
-      </div>
-    </div>
-  </div>`;
+  <div class="s-days" id="s-weeks">${wkBtns}<input type="date" id="s-jump" value="${days[0]}" min="${D.days[0]}" max="${D.days[D.days.length - 1]}" style="flex:none;width:140px;font-size:12px;"></div>
+  <div id="s-daylist">${days.map(d => {
+    const rs = D.byDay[d], dn = rs.filter(r => r.res), allDone = dn.length === rs.length;
+    const head = `<b>${dowName(d)} ${fmtDate(d)}</b><span class="kpill">K${rs[0].k}</span><span class="mono small-note" style="margin:0;">${rs.length} meczów</span>${dn.length ? rowPills(dn) : ''}`;
+    const key = 's|' + d;
+    return dayBlockHTML(key, head, () => {
+      rs.forEach(dossierFor);
+      const sorted = rs.slice().sort((a, b) => (a.res ? 1 : 0) - (b.res ? 1 : 0) || b.dos.hot.length - a.dos.hot.length || b.dos.score - a.dos.score);
+      return dayInfoHTML(d, rs) + sorted.map(seasonRowHTML).join('');
+    }, dayOpen(key, !allDone));
+  }).join('')}</div>`;
 
-  el.querySelectorAll('[data-day]').forEach(b => { b.onclick = () => { s27Day = b.dataset.day; renderSezon2627(); }; });
-  el.querySelectorAll('[data-f]').forEach(c => { c.onclick = () => { s27Filter = c.dataset.f; renderSezon2627(); }; });
-  document.getElementById('s-jump').onchange = e => { const v = e.target.value; if (!v) return; s27Day = D.days.find(d => d >= v) || D.days[D.days.length - 1]; renderSezon2627(); };
-  el.querySelectorAll('[data-i]').forEach(x => { x.onclick = () => { const r = D.rows[+x.dataset.i]; if (r.known) openMatchDossier(r); }; });
+  el.querySelectorAll('[data-week]').forEach(b => { b.onclick = () => { s27Week = b.dataset.week; renderSezon2627(); }; });
+  document.getElementById('s-jump').onchange = e => { const v = e.target.value; if (!v) return; const dd = D.days.find(d => d >= v) || D.days[D.days.length - 1]; s27Week = weekStart(dd); renderSezon2627(); };
+  const act = el.querySelector('.s-day.on'); if (act) act.scrollIntoView({ block: 'nearest', inline: 'center' });
+  bindDays(el, root => root.querySelectorAll('[data-i]').forEach(x => { x.onclick = () => { const r = D.rows[+x.dataset.i]; if (r.known) openMatchDossier(r); }; }));
 }
 
-// ---------- 5. Widok: Zakończone (sezon zasadniczy, dzień po dniu) ----------
+// ---------- 6. Widok: Zakończone (sezon zasadniczy + preseason, dzień po dniu) ----------
 function renderZakonczone() {
   const el = document.getElementById('view-zakonczone');
   const D = s27Build();
-  const done = D.rows.filter(r => r.res);
-  if (!done.length) { el.innerHTML = `<div class="section-title"><h2>✅ Zakończone</h2><div class="rule"></div></div><div class="empty-state"><div class="ico">◇</div>Brak rozegranych meczów sezonu zasadniczego.</div>`; return; }
-  const cnt = { '1/2': 0, '2/1': 0, 'X': 0, 'brak_lamaka': 0 };
-  done.forEach(r => { cnt[r.res.cls]++; });
-  const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
-  done.forEach(r => { if (r.known) dossierFor(r); });
-  const strong = done.filter(r => r.dos && r.dos.hot.length >= 3), weak = done.filter(r => r.dos && r.dos.hot.length < 3);
-  const sl = strong.filter(r => isLamak(r.res.cls)).length, wl = weak.filter(r => isLamak(r.res.cls)).length;
-  const test = f => zkFilter === 'all' ? true : zkFilter === 'lamak' ? isLamak(f.cls) : f.cls === zkFilter;
-  const days = [...new Set(done.map(r => r.f.d))].sort().reverse();
-  const chip = (id, label) => `<div class="chip ${zkFilter === id ? 'on' : ''}" data-zf="${id}">${label}</div>`;
-  const q = res => res.q.map(x => `<span class="mono" style="font-size:11.5px;color:var(--ink-soft);">${x[0]}:${x[1]}</span>`).join(' · ');
-  el.innerHTML = `
-  <div class="section-title"><h2>✅ Zakończone — sezon zasadniczy 26/27</h2><div class="rule"></div></div>
-  <div class="s-stats">
-    <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}</div><div class="s">w ${days.length} dniach ligowych</div></div>
-    <div class="s-stat hl"><div class="k">Łamaki</div><div class="v">${lam}</div><div class="s">${fmtPct(lam, done.length)} meczów</div></div>
-    <div class="s-stat"><div class="k">1/2 · 2/1</div><div class="v">${cnt['1/2']} · ${cnt['2/1']}</div><div class="s">gospodarz traci · gość traci</div></div>
-    <div class="s-stat"><div class="k">Remisy po 4. kw. (X)</div><div class="v">${cnt['X']}</div><div class="s">dogrywki w sezonie</div></div>
-    <div class="s-stat"><div class="k">Test wzorców</div><div class="v" style="font-size:20px;">🔥≥3: ${sl}/${strong.length}</div><div class="s">reszta: ${wl}/${weak.length} łamaków</div></div>
-  </div>
-  <div class="s-tools"><span class="lbl">Pokaż</span>${chip('all', 'Wszystkie')}${chip('lamak', 'Tylko łamaki')}${chip('1/2', '1/2')}${chip('2/1', '2/1')}${chip('X', 'X (remis)')}</div>
-  ${days.map(d => {
-    const rs = done.filter(r => r.f.d === d), shown = rs.filter(r => test({ cls: r.res.cls }));
-    if (!shown.length) return '';
-    const c = k => rs.filter(r => r.res.cls === k).length, l = c('1/2') + c('2/1') + c('X');
-    return `<div class="s-list" style="margin-bottom:14px;">
-      <div class="s-dayhead"><b>${DOW_FULL[new Date(d + 'T12:00:00').getDay()]} ${fmtDate(d)}</b><span class="mono small-note" style="margin:0;">K${rs[0].k} · ${rs.length} meczów</span>
-        <span class="day-pill" style="background:var(--orange-soft);color:var(--orange)">ŁAMAKI ${l}/${rs.length}</span>
-        <span class="day-pill" style="background:var(--c12-soft);color:var(--c12)">1/2 ×${c('1/2')}</span>
-        <span class="day-pill" style="background:var(--c21-soft);color:var(--c21)">2/1 ×${c('2/1')}</span>
-        <span class="day-pill" style="background:var(--cx-soft);color:var(--cx)">REMISY X ×${c('X')}</span>
-        <span class="day-pill" style="background:var(--cnone-soft);color:var(--cnone)">bez łamaka ×${c('brak_lamaka')}</span></div>
-      ${shown.map(r => `<div class="s-row ${rowClass(r.res.cls)} ${r.dos ? heatClass(r.dos.hot.length) : ''}" data-i="${r.i}">
-        <div class="s-team">${r.f.h}</div><div class="s-team">${r.f.a}</div>
-        <div><span class="s-score"><b>${r.res.fh}:${r.res.fa}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(r.res.cls)}">${clsLabel(r.res.cls)}</span>
-          <div style="margin-top:4px;">${q(r.res)} <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span></div></div>
-        <div class="s-heat ${r.dos ? heatClass(r.dos.hot.length) : 'h0'}" title="Wzorce wskazane PRZED meczem"><b>🔥 ${r.dos ? r.dos.hot.length : '—'}</b><span>przed meczem</span></div></div>`).join('')}
-    </div>`;
-  }).join('')}`;
+  const chip = (id, label, cur, attr) => `<div class="chip ${cur === id ? 'on' : ''}" data-${attr}="${id}">${label}</div>`;
+  const test = c => zkFilter === 'all' ? true : zkFilter === 'lamak' ? isLamak(c) : c === zkFilter;
+  const filters = `<div class="s-tools"><span class="lbl">Źródło</span>${chip('regular', 'Sezon zasadniczy 26/27', zkSource, 'zs')}${chip('pre', 'Preseason 26/27', zkSource, 'zs')}<span class="lbl">Typ</span>${chip('all', 'Wszystkie', zkFilter, 'zf')}${chip('lamak', 'Łamaki', zkFilter, 'zf')}${chip('1/2', '1/2', zkFilter, 'zf')}${chip('2/1', '2/1', zkFilter, 'zf')}${chip('X', 'X', zkFilter, 'zf')}</div>`;
+  let head = '', blocks = '';
+  let bind = () => {};
+  if (zkSource === 'regular') {
+    const done = D.rows.filter(r => r.res);
+    if (!done.length) { el.innerHTML = `<div class="section-title"><h2>✅ Zakończone</h2><div class="rule"></div></div>${filters}<div class="empty-state"><div class="ico">◇</div>Brak rozegranych meczów sezonu zasadniczego.</div>`; bindZk(el); return; }
+    const cnt = { '1/2': 0, '2/1': 0, 'X': 0, 'brak_lamaka': 0 };
+    done.forEach(r => { cnt[r.res.cls]++; });
+    const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
+    const recent = done.slice(-120); recent.forEach(r => { if (r.known) dossierFor(r); });
+    const strong = recent.filter(r => r.dos && r.dos.hot.length >= 3), weak = recent.filter(r => r.dos && r.dos.hot.length < 3);
+    const sl = strong.filter(r => isLamak(r.res.cls)).length, wl = weak.filter(r => isLamak(r.res.cls)).length;
+    const days = [...new Set(done.map(r => r.f.d))].sort().reverse();
+    head = `<div class="s-stats">
+      <div class="s-stat"><div class="k">Rozegrane</div><div class="v">${done.length}</div><div class="s">w ${days.length} dniach ligowych</div></div>
+      <div class="s-stat hl"><div class="k">Łamaki</div><div class="v">${lam}</div><div class="s">${fmtPct(lam, done.length)} meczów</div></div>
+      <div class="s-stat"><div class="k">1/2 · 2/1</div><div class="v">${cnt['1/2']} · ${cnt['2/1']}</div></div>
+      <div class="s-stat"><div class="k">Remisy po 4. kw. (X)</div><div class="v">${cnt['X']}</div></div>
+      <div class="s-stat"><div class="k">Test wzorców (ost. ${recent.length})</div><div class="v" style="font-size:19px;">🔥≥3: ${sl}/${strong.length}</div><div class="s">reszta: ${wl}/${weak.length} łamaków</div></div></div>`;
+    blocks = days.map((d, ix) => {
+      const rs = done.filter(r => r.f.d === d), shown = rs.filter(r => test(r.res.cls));
+      if (!shown.length) return '';
+      const key = 'z|' + d;
+      return dayBlockHTML(key, `<b>${dowName(d)} ${fmtDate(d)}</b><span class="kpill">K${rs[0].k}</span><span class="mono small-note" style="margin:0;">${rs.length} meczów</span>${rowPills(rs)}`,
+        () => shown.map(r => { if (r.known) dossierFor(r); return finishedRowHTML(r); }).join(''), dayOpen(key, ix < 2));
+    }).join('');
+    bind = root => root.querySelectorAll('[data-i]').forEach(x => { x.onclick = () => { const r = D.rows[+x.dataset.i]; if (r.known) openMatchDossier(r); }; });
+  } else {
+    const res = allPreseasonResults().sort((a, b) => b.date_iso.localeCompare(a.date_iso) || b.time.localeCompare(a.time));
+    const cnt = { '1/2': 0, '2/1': 0, 'X': 0, 'brak_lamaka': 0 };
+    res.forEach(r => { cnt[r.classification] = (cnt[r.classification] || 0) + 1; });
+    const lam = cnt['1/2'] + cnt['2/1'] + cnt['X'];
+    const days = [...new Set(res.map(r => r.date_iso))];
+    head = `<div class="s-stats"><div class="s-stat"><div class="k">Preseason · rozegrane</div><div class="v">${res.length}</div><div class="s">mecze towarzyskie — poza statystykami</div></div>
+      <div class="s-stat hl"><div class="k">Łamaki</div><div class="v">${lam}</div><div class="s">${fmtPct(lam, res.length)}</div></div>
+      <div class="s-stat"><div class="k">1/2 · 2/1 · X</div><div class="v">${cnt['1/2']} · ${cnt['2/1']} · ${cnt['X']}</div></div></div>`;
+    blocks = days.map((d, ix) => {
+      const rs = res.filter(r => r.date_iso === d), shown = rs.filter(r => test(r.classification));
+      if (!shown.length) return '';
+      const key = 'p|' + d, c = k => rs.filter(r => r.classification === k).length;
+      return dayBlockHTML(key, `<b>${dowName(d)} ${fmtDate(d)}</b><span class="kpill">preseason</span><span class="mono small-note" style="margin:0;">${rs.length} meczów</span>
+        <span class="day-pill" style="background:var(--orange-soft);color:var(--orange)">ŁAMAKI ${c('1/2') + c('2/1') + c('X')}/${rs.length}</span><span class="day-pill" style="background:var(--cx-soft);color:var(--cx)">REMISY X ×${c('X')}</span>`,
+        () => shown.map(r => `<div class="s-row ${rowClass(r.classification)}" style="cursor:default;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr);">
+          <div class="s-team">${r.home_team}</div><div class="s-team">${r.away_team}</div>
+          <div><span class="s-score"><b>${r.final_home}:${r.final_away}</b>${r.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(r.classification)}">${clsLabel(r.classification)}</span>
+          <div style="margin-top:3px;">${r.q.map(x => `<span class="mono" style="font-size:11px;color:var(--ink-soft);">${x[0]}:${x[1]}</span>`).join(' · ')} <span class="small-note">· przerwa ${r.halfH}:${r.halfA}</span></div></div></div>`).join(''), dayOpen(key, ix < 2));
+    }).join('');
+  }
+  el.innerHTML = `<div class="section-title"><h2>✅ Zakończone</h2><div class="rule"></div></div>${head}${filters}${blocks || '<div class="empty-state"><div class="ico">◇</div>Brak meczów dla tego filtra.</div>'}`;
+  bindZk(el);
+  bindDays(el, bind);
+}
+function bindZk(el) {
+  el.querySelectorAll('[data-zs]').forEach(c => { c.onclick = () => { zkSource = c.dataset.zs; renderZakonczone(); }; });
   el.querySelectorAll('[data-zf]').forEach(c => { c.onclick = () => { zkFilter = c.dataset.zf; renderZakonczone(); }; });
-  el.querySelectorAll('[data-i]').forEach(x => { x.onclick = () => { const r = D.rows[+x.dataset.i]; if (r.known) openMatchDossier(r); }; });
+}
+function finishedRowHTML(r) {
+  const q = r.res.q.map(x => `<span class="mono" style="font-size:11px;color:var(--ink-soft);">${x[0]}:${x[1]}</span>`).join(' · ');
+  return `<div class="s-row ${rowClass(r.res.cls)} ${r.dos ? heatClass(r.dos.hot.length) : ''}" data-i="${r.i}">
+    <div class="s-team">${r.f.h}</div><div class="s-team">${r.f.a}</div>
+    <div><span class="s-score"><b>${r.res.fh}:${r.res.fa}</b>${r.res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(r.res.cls)}">${clsLabel(r.res.cls)}</span>
+      <div style="margin-top:3px;">${q} <span class="small-note">· przerwa ${r.res.halfH}:${r.res.halfA}</span></div></div>
+    <div class="s-heat ${r.dos ? heatClass(r.dos.hot.length) : 'h0'}" title="Wzorce wskazane PRZED meczem"><b>🔥 ${r.dos ? r.dos.hot.length : '—'}</b><span>przed meczem</span></div></div>`;
+}
+
+// ---------- 7. Skaner schematów (wszystkie sezony, z testem powtarzalności) ----------
+let schKind = 'L', schDir = 'hot', schStable = true, SCH = null;
+function schemeData() {
+  if (SCH) return SCH;
+  const I = dosIndex();
+  const seasons = [...new Set(I.recs.map(r => r.season))].filter(s => s !== CUR_SEASON).sort();
+  const half = s => seasons.indexOf(s) % 2;
+  const G = {}, C = {};
+  const MON = ['', 'styczniu', 'lutym', 'marcu', 'kwietniu', 'maju', 'czerwcu', 'lipcu', 'sierpniu', 'wrześniu', 'październiku', 'listopadzie', 'grudniu'];
+  const feed = cur => {
+    const add = (key, dim, label, r) => {
+      if (cur) { const c = C[key] || (C[key] = { n: 0, l: 0, x: 0 }); c.n++; if (r.l) c.l++; if (r.x) c.x++; return; }
+      const g = G[key] || (G[key] = { dim, label, n: 0, l: 0, x: 0, hn: [0, 0], hl: [0, 0], hx: [0, 0] });
+      const h = half(r.season); g.n++; g.hn[h]++; if (r.l) { g.l++; g.hl[h]++; } if (r.x) { g.x++; g.hx[h]++; }
+    };
+    I.recs.filter(r => (r.season === CUR_SEASON) === cur).forEach(r => {
+      const odd = ODD_SEASONS.has(r.season), mo = +r.d.slice(5, 7);
+      if (!odd) { add('K' + r.k, 'Kolejka', `Kolejka ${r.k} ligi (${r.k}. dzień ligowy sezonu)`, r); add('D' + r.d.slice(5), 'Data', `Data ${r.d.slice(8)}.${r.d.slice(5, 7)}`, r); }
+      add('W' + r.dow + mo, 'Dzień × miesiąc', `${r.dow} w ${MON[mo]}`, r);
+      add('P' + [r.h, r.a].sort().join('|'), 'Para drużyn', `Para: ${[r.h, r.a].sort().map(t => t.split(' ').pop()).join(' – ')}`, r);
+      if (r.hr && r.ar) add('R' + rankB(r.hr) + '|' + rankB(r.ar), 'Tabela', `Miejsca w tabeli: gospodarz ${rankB(r.hr)} vs gość ${rankB(r.ar)}`, r);
+      if (r.hrest != null && r.arest != null) add('S' + restB(r.hrest) + '|' + restB(r.arest), 'Odpoczynek', `Odpoczynek: gospodarz ${restLab(restB(r.hrest))}, gość ${restLab(restB(r.arest))}`, r);
+    });
+    Object.entries(I.TG).forEach(([t, list]) => list.filter(g => (g.season === CUR_SEASON) === cur).forEach(g => {
+      const nm = t.split(' ').pop(), mo = +g.d.slice(5, 7), r = { season: g.season, l: g.l, x: g.x };
+      add(`TD|${t}|${g.dow}`, 'Drużyna × dzień tyg.', `${nm}: ${g.dow.toLowerCase()}`, r);
+      add(`TM|${t}|${mo}`, 'Drużyna × miesiąc', `${nm}: mecze w ${MON[mo]}`, r);
+      const b = Math.floor((g.n - 1) / 5); add(`TN|${t}|${b}`, 'Drużyna × numer meczu', `${nm}: mecze nr ${b * 5 + 1}–${b * 5 + 5} sezonu`, r);
+      if (g.rk) add(`TR|${t}|${rankB(g.rk)}`, 'Drużyna × tabela', `${nm}: gdy jest na miejscach ${rankB(g.rk)}`, r);
+      if (g.rest != null && g.rest <= 14) add(`TS|${t}|${restB(g.rest)}`, 'Drużyna × odpoczynek', `${nm}: ${restLab(restB(g.rest))}`, r);
+    }));
+  };
+  feed(false); feed(true);
+  const all = Object.entries(G).filter(([, g]) => g.n >= 30).map(([k, g]) => ({ ...g, cur: C[k] || { n: 0, l: 0, x: 0 } }));
+  SCH = { all, BL: I.BL, BX: I.BX, seasons: seasons.length };
+  return SCH;
+}
+function renderSchematy(el) {
+  const S = schemeData(), kx = schKind === 'X';
+  const base = kx ? S.BX : S.BL;
+  const rows = S.all.map(g => {
+    const h = kx ? g.x : g.l, ha = kx ? g.hx : g.hl;
+    const rate = h / g.n, hot = rate > base;
+    const p = hot ? binomTail(h, g.n, base, true) : binomTail(h, g.n, base, false);
+    const rA = g.hn[0] ? ha[0] / g.hn[0] : 0, rB = g.hn[1] ? ha[1] / g.hn[1] : 0;
+    const min = Math.max(8, g.n * 0.12);
+    const stable = g.hn[0] >= min && g.hn[1] >= min && (hot ? (rA > base + 0.02 && rB > base + 0.02) : (rA < base - 0.02 && rB < base - 0.02));
+    const cur = kx ? g.cur.x : g.cur.l;
+    return { g, h, rate, hot, p, rA, rB, stable, cur, curN: g.cur.n };
+  });
+  const T = rows.length, found = rows.filter(r => r.p <= 0.01), foundStable = found.filter(r => r.stable), bonf = rows.filter(r => r.p <= 0.05 / T);
+  const fw = foundStable.filter(r => r.curN > 0), fwH = fw.reduce((a, r) => a + r.cur, 0), fwN = fw.reduce((a, r) => a + r.curN, 0), fwE = fw.reduce((a, r) => a + r.curN * (r.hot ? base : base), 0);
+  const shown = rows.filter(r => (schDir === 'hot' ? r.hot : !r.hot) && (!schStable || r.stable)).sort((a, b) => a.p - b.p).slice(0, 40);
+  const chip = (id, label, cur, attr) => `<div class="chip ${cur === id ? 'on' : ''}" data-${attr}="${id}">${label}</div>`;
+  el.innerHTML = `
+  <div class="s-tools"><span class="lbl">Szukaj</span>${chip('L', 'Łamaków', schKind, 'sk')}${chip('X', 'Remisów (X)', schKind, 'sk')}<span class="lbl">Kierunek</span>${chip('hot', '🔥 często', schDir, 'sd')}${chip('cold', '❄ rzadko', schDir, 'sd')}<span class="lbl">Filtr</span>${chip('1', 'Tylko powtarzalne', schStable ? '1' : '0', 'ss')}${chip('0', 'Wszystkie', schStable ? '1' : '0', 'ss')}</div>
+  <div class="small-note" style="margin:0 0 10px;">Przeszukano <b>${T}</b> schematów w ${S.seasons} sezonach (kolejki, daty, dni × miesiące, pary drużyn, miejsca w tabeli, odpoczynek, drużyna × dzień / miesiąc / numer meczu / tabela / odpoczynek). Przy p ≤ 1% z samego przypadku wyszłoby ok. ${(T * 0.01 * 2).toFixed(0)}; wyszło <b>${found.length}</b> (powtarzalnych w obu połowach historii: ${foundStable.length}). Po korekcie na liczbę testów (p ≤ ${(0.05 / T).toFixed(5)}): <b>${bonf.length}</b>.<br>🔬 <b>Test na żywo (sezon 26/27, dane spoza historii):</b> schematy „powtarzalne” z p ≤ 1% zagrały dotąd ${fwH}/${fwN} ${kx ? 'dogrywek' : 'łamaków'} (sama baza dałaby ok. ${fwE.toFixed(1)}).</div>
+  <div class="card" style="overflow-x:auto;padding:0;"><table style="font-size:12.5px;"><thead><tr><th>Rodzaj</th><th>Schemat</th><th class="num">Było</th><th class="num">%</th><th class="num">Baza</th><th class="num">p</th><th class="num">Połowa A / B</th><th class="num">26/27</th><th class="num">Kurs od</th></tr></thead><tbody>
+  ${shown.map(r => `<tr class="${r.stable ? 'sch-stable' : ''}"><td class="small-note">${r.g.dim}</td><td>${r.g.label}</td><td class="num mono">${r.h}/${r.g.n}</td><td class="num mono"><b>${(100 * r.rate).toFixed(0)}%</b></td><td class="num mono small-note">${(100 * base).toFixed(0)}%</td><td class="num mono">${r.p < 0.0001 ? '<0.0001' : r.p.toFixed(4)}</td><td class="num mono small-note">${(100 * r.rA).toFixed(0)}% / ${(100 * r.rB).toFixed(0)}%</td><td class="num mono">${r.curN ? `${r.cur}/${r.curN}` : '—'}</td><td class="num mono">${r.rate > 0 ? (1 / r.rate).toFixed(2) : '—'}</td></tr>`).join('') || '<tr><td colspan="9" class="small-note" style="padding:16px;">Brak schematów spełniających filtr.</td></tr>'}
+  </tbody></table></div>`;
+  el.querySelectorAll('[data-sk]').forEach(c => { c.onclick = () => { schKind = c.dataset.sk; renderSchematy(el); }; });
+  el.querySelectorAll('[data-sd]').forEach(c => { c.onclick = () => { schDir = c.dataset.sd; renderSchematy(el); }; });
+  el.querySelectorAll('[data-ss]').forEach(c => { c.onclick = () => { schStable = c.dataset.ss === '1'; renderSchematy(el); }; });
 }
 
 function lastGamesListHTML(team) {
@@ -1667,8 +1834,16 @@ document.getElementById('modal-overlay').addEventListener('click', e => { if (e.
 // DRUŻYNY
 // ============================================================
 let selectedTeam = TEAMS[0];
-function renderDruzyny() {
+let druzynySub = 'team';
+function renderDruzynyHost() {
   const el = document.getElementById('view-druzyny');
+  el.innerHTML = `<div class="subnav"><button class="btn ${druzynySub === 'team' ? '' : 'secondary'}" id="dz-team" type="button">🏀 Drużyna</button><button class="btn ${druzynySub === 'h2h' ? '' : 'secondary'}" id="dz-h2h" type="button">⚔ Para (H2H)</button></div><div id="sub-team" style="${druzynySub === 'team' ? '' : 'display:none'}"></div><div id="sub-h2h" style="${druzynySub === 'h2h' ? '' : 'display:none'}"></div>`;
+  document.getElementById('dz-team').onclick = () => { druzynySub = 'team'; renderDruzynyHost(); };
+  document.getElementById('dz-h2h').onclick = () => { druzynySub = 'h2h'; renderDruzynyHost(); };
+  if (druzynySub === 'team') renderDruzyny(); else renderH2H();
+}
+function renderDruzyny() {
+  const el = document.getElementById('sub-team');
   let html = `<div class="section-title"><h2>Analiza drużyny</h2><div class="rule"></div></div>
   <div class="controls-row">
     <div class="field"><label>Drużyna</label>
@@ -1941,7 +2116,7 @@ function renderTeamDetail() {
 // ============================================================
 let h2hA = TEAMS[0], h2hB = TEAMS[1];
 function renderH2H() {
-  const el = document.getElementById('view-h2h');
+  const el = document.getElementById('sub-h2h');
   let html = `<div class="section-title"><h2>Analiza H2H</h2><div class="rule"></div></div>
   <div class="two-col-select" style="margin-bottom:22px;">
     <div class="field"><label>Drużyna A</label><select id="h2h-a">${TEAMS.map(t => `<option ${t === h2hA ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
@@ -2051,19 +2226,22 @@ const DEP_GROUPS = ['Faza sezonu', 'Miesiąc', 'Dzień tygodnia', 'Dzień miesi�
 let activeDepFilters = new Set();
 let depDetailTeam = null;
 
-let analizaSubTab = 'filtry';
+let analizaSubTab = 'schematy';
 function renderAnaliza() {
   const el = document.getElementById('view-analiza');
   el.innerHTML = `
-  <div class="section-title"><h2>Zależności i wzorce</h2><div class="rule"></div></div>
-  <div style="display:flex;gap:8px;margin-bottom:18px;">
+  <div class="section-title"><h2>Wzorce i schematy</h2><div class="rule"></div></div>
+  <div class="subnav">
+    <button class="btn ${analizaSubTab === 'schematy' ? '' : 'secondary'}" id="analiza-btn-schematy" type="button">🧬 Skaner schematów</button>
     <button class="btn ${analizaSubTab === 'filtry' ? '' : 'secondary'}" id="analiza-btn-filtry" type="button">🔎 Filtry zależności</button>
     <button class="btn ${analizaSubTab === 'wzorce' ? '' : 'secondary'}" id="analiza-btn-wzorce" type="button">🧩 Gotowe wzorce</button>
   </div>
   <div id="analiza-content"></div>`;
+  document.getElementById('analiza-btn-schematy').onclick = () => { analizaSubTab = 'schematy'; renderAnaliza(); };
   document.getElementById('analiza-btn-filtry').onclick = () => { analizaSubTab = 'filtry'; renderAnaliza(); };
   document.getElementById('analiza-btn-wzorce').onclick = () => { analizaSubTab = 'wzorce'; renderAnaliza(); };
-  if (analizaSubTab === 'filtry') renderZaleznosci(); else renderWzorce();
+  if (analizaSubTab === 'schematy') renderSchematy(document.getElementById('analiza-content'));
+  else if (analizaSubTab === 'filtry') renderZaleznosci(); else renderWzorce();
 }
 
 function renderZaleznosci() {
@@ -2591,8 +2769,7 @@ function renderForecastResult() {
 // INIT
 // ============================================================
 const RENDERERS = {
-  sezon2627: renderSezon2627, zakonczone: renderZakonczone, wyniki: renderWyniki, wnioski: renderWnioski, terminarz: renderTerminarz, druzyny: renderDruzyny, h2h: renderH2H,
-  analiza: renderAnaliza, prognoza: renderPrognoza
+  sezon2627: renderSezon2627, zakonczone: renderZakonczone, terminarz: renderTerminarz, druzyny: renderDruzynyHost, analiza: renderAnaliza
 };
 selectTab('sezon2627');
 refreshPreseasonResults();
