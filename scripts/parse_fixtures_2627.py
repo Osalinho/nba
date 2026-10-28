@@ -16,7 +16,11 @@ NAME_MAP = {
 
 
 def parse(path):
-    soup = BeautifulSoup(Path(path).read_text(encoding='utf-8', errors='ignore'), 'html.parser')
+    return parse_text(Path(path).read_text(encoding='utf-8', errors='ignore'))
+
+
+def parse_text(html):
+    soup = BeautifulSoup(html, 'html.parser')
     out, last = [], None
     for r in soup.select('table.t1.matches tr.odd, table.t1.matches tr.even'):
         t = r.select_one('td.date').get_text(strip=True)
