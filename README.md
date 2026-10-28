@@ -33,17 +33,21 @@ index.html                 - GOTOWA STRONA (to ją otwiera użytkownik / serwuje
 3. **Włącz uprawnienia do zapisu dla Actions** (inaczej bot nie będzie mógł commitować aktualizacji):
    Settings → Actions → General → Workflow permissions → zaznacz **"Read and write permissions"** → Save.
 
-4. **Gotowe.** Workflow `.github/workflows/daily-update.yml` uruchomi się automatycznie codziennie o 6:00 UTC (7-8 rano czasu polskiego). Możesz go też odpalić ręcznie: zakładka **Actions** → `Codzienna aktualizacja NBA Łamaki` → `Run workflow`.
+4. **Gotowe.** Workflow `.github/workflows/daily-update.yml` uruchomi się automatycznie codziennie o 8:00 czasu polskiego (dwa terminy cron + bramka czasu, żeby działało i latem, i zimą). Możesz go też odpalić ręcznie: zakładka **Actions** → `Codzienna aktualizacja NBA Łamaki` → `Run workflow`.
 
 ## Jak działa codzienna aktualizacja
 
-0. `fetch_preseason_24score.py` pobiera stronę preseasonu z 24score i dopisuje nowe wyniki do `data/preseason_results.json` (kilka KB). Strona na GitHub Pages dociąga ten plik sama, więc **nie trzeba przebudowywać index.html**. Przy blokadzie/awarii 24score skrypt tylko ostrzega i nic nie psuje.
-1. `fetch_new_games.py` pyta oficjalne stats.nba.com (przez bibliotekę `nba_api`) o mecze z ostatnich 4 dni, żeby nie zgubić niczego nawet jeśli Action raz się nie uda.
-2. Nowe, wcześniej niezapisane mecze (rozpoznawane po dacie + parze drużyn) dopisuje do `data/games_all.json`.
-3. `enrich.py` przelicza całą bazę na nowo (klasyfikacje 1/2/2/1/X, serie, back-to-back, itd.) do `data/enriched_data.json`.
-4. `build_site.py` składa `index.html` na nowo.
-   Kroki 2–4 uruchamiają się **tylko gdy są nowe mecze sezonu** (inaczej codziennie zmieniałby się znacznik czasu w danych i repo puchłoby o ~16 MB dziennie).
-5. Jeśli coś się zmieniło, bot commituje i pushuje zmiany.
+1. `fetch_regular_24score.py` pobiera z en.24score.com stronę sezonu zasadniczego
+   (`.../basketball/usa/nba/2026-2027/regular_season/fixtures/`), dopisuje nowe zakończone mecze do `data/games_all.json`
+   i odświeża cały terminarz w `data/fixtures_2026_27.json`. To to samo źródło, z którego pochodzi cała historia
+   (stats.nba.com odpadło - GitHub Actions jest tam blokowany, a daty bywały inne o dzień).
+2. `fetch_preseason_24score.py` robi to samo dla preseasonu (`data/preseason_results.json`).
+3. Gdy są zmiany: `enrich.py` przelicza bazę (razem z `data/history_2015_2023.json`), `build_site.py` składa `index.html`.
+4. Bot commituje i pushuje. `enriched_data.json` powstaje na nowo przy każdej przebudowie i NIE jest commitowany.
+
+Plan B (gdyby 24score blokowało serwery GitHuba): zapisz stronę w przeglądarce (Ctrl+S) i wrzuć jako
+`data/inbox/regular.html` - wrzucenie samo uruchamia przebieg. `fetch_new_games.py` (stats.nba.com) zostaje w repo,
+ale nie jest już używany - dwa źródła naraz dawałyby zdublowane mecze.
 
 **Ważne:** plik workflow MUSI leżeć w `.github/workflows/daily-update.yml` - GitHub ignoruje go w innym miejscu.
 
@@ -51,7 +55,7 @@ index.html                 - GOTOWA STRONA (to ją otwiera użytkownik / serwuje
 
 ```bash
 pip install -r requirements.txt
-python scripts/fetch_new_games.py --days-back 7
+python scripts/fetch_regular_24score.py
 python scripts/enrich.py
 python scripts/build_site.py
 ```
