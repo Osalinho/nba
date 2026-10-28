@@ -2,41 +2,67 @@ name: Codzienna aktualizacja NBA Łamaki
 
 on:
   schedule:
-    # 6:00 UTC = 7:00 lub 8:00 czasu polskiego (zależnie od czasu letniego/zimowego)
+    # GitHub liczy cron w UTC. Chcemy 8:00 czasu polskiego przez cały rok (kolejka NBA jest wtedy już dawno skończona):
+    #   lato (CEST, UTC+2) -> 6:00 UTC,  zima (CET, UTC+1) -> 7:00 UTC.
+    # Odpalamy oba terminy, a krok "Bramka czasu" przepuszcza tylko ten, który wypada koło 8:00 w Polsce.
     - cron: '0 6 * * *'
-  workflow_dispatch: {}  # pozwala też odpalić ręcznie z zakładki Actions na GitHubie
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}  # ręczne odpalenie z zakładki Actions (Run workflow) - omija bramkę czasu
   push:
-    paths: ['data/inbox/**']  # plan B: wrzucenie zapisanej strony od razu uruchamia przebieg
+    paths: ['data/inbox/**']  # plan B: wrzucenie zapisanej strony (data/inbox/regular.html) od razu uruchamia przebieg
 
 permissions:
   contents: write
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
+      - name: Bramka czasu (8:00 czasu polskiego)
+        id: gate
+        run: |
+          H=$(TZ=Europe/Warsaw date +%H)
+          echo "W Polsce jest teraz godzina $H"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$H" != "08" ] && [ "$H" != "09" ]; then
+            echo "go=0" >> "$GITHUB_OUTPUT"
+            echo "To nie jest termin na 8:00 w Polsce - pomijam ten przebieg."
+          else
+            echo "go=1" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout repo
+        if: steps.gate.outputs.go == '1'
         uses: actions/checkout@v4
 
       - name: Setup Python
+        if: steps.gate.outputs.go == '1'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Instalacja zależności
+        if: steps.gate.outputs.go == '1'
         run: pip install -r requirements.txt
 
-      # --- PRESEASON: lekki plik JSON (kilka KB), strona dociąga go sama - bez przebudowy index.html ---
+      # --- SEZON ZASADNICZY: wyniki + terminarz z en.24score.com (to samo źródło co cała historia) ---
+      - name: Pobierz wyniki sezonu zasadniczego z 24score
+        if: steps.gate.outputs.go == '1'
+        continue-on-error: true
+        run: python scripts/fetch_regular_24score.py
+
+      # --- PRESEASON: lekki plik JSON, strona dociąga go sama ---
       - name: Pobierz wyniki preseason z 24score
+        if: steps.gate.outputs.go == '1'
+        continue-on-error: true
         run: python scripts/fetch_preseason_24score.py
 
-      # --- SEZON: nowe mecze z stats.nba.com (preseason jest tu pomijany) ---
-      - name: Pobierz nowe mecze
-        run: python scripts/fetch_new_games.py --days-back 4
-
-      # enrich.py zapisuje w danych bieżący znacznik czasu, więc uruchamiamy go TYLKO gdy są nowe mecze.
-      # Inaczej każdy dzień = zmiana ~16 MB (enriched_data.json + index.html) i puchnące repo.
-      - name: Przelicz dane i zbuduj stronę (tylko gdy są nowe mecze)
+      # Przebudowa tylko gdy są nowe mecze / zmieniony terminarz (enrich zapisuje bieżący znacznik czasu).
+      - name: Przelicz dane i zbuduj stronę (tylko gdy są zmiany)
+        if: steps.gate.outputs.go == '1'
         run: |
           if [ "$(cat data/.last_update_had_changes 2>/dev/null)" = "1" ]; then
             python scripts/enrich.py
@@ -46,13 +72,16 @@ jobs:
           fi
 
       - name: Commit i push jeśli są zmiany
+        if: steps.gate.outputs.go == '1'
         run: |
           git config user.name "nba-lamaki-bot"
           git config user.email "actions@github.com"
-          git add data/preseason_results.json data/games_all.json data/enriched_data.json index.html
+          # enriched_data.json (ok. 28 MB) powstaje na nowo przy każdej przebudowie - nie commitujemy go, żeby repo nie puchło
+          git add data/preseason_results.json data/games_all.json data/fixtures_2026_27.json index.html
           if git diff --cached --quiet; then
             echo "Brak zmian - nic do commitowania."
           else
             git commit -m "Automatyczna aktualizacja danych $(date -u +%Y-%m-%d)"
+            git pull --rebase --autostash
             git push
           fi
