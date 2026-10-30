@@ -2,12 +2,13 @@ name: Codzienna aktualizacja NBA Łamaki
 
 on:
   schedule:
-    # GitHub liczy cron w UTC. Chcemy 8:00 czasu polskiego przez cały rok (kolejka NBA jest wtedy już dawno skończona):
-    #   lato (CEST, UTC+2) -> 6:00 UTC,  zima (CET, UTC+1) -> 7:00 UTC.
-    # Odpalamy oba terminy, a krok "Bramka czasu" przepuszcza tylko ten, który wypada koło 8:00 w Polsce.
+    # GitHub liczy cron w UTC, a przebiegi potrafią się spóźniać nawet o kilka godzin - dlatego BEZ "bramki czasu".
+    # Docelowo 8:00 czasu polskiego: 7:00 UTC zimą (CET) / 6:00 UTC latem (CEST) - odpalamy oba terminy,
+    # a trzeci (11:00 UTC) to siatka bezpieczeństwa. Przebieg bez nowych meczów nic nie psuje (nic nie commituje poza statusem).
     - cron: '0 6 * * *'
     - cron: '0 7 * * *'
-  workflow_dispatch: {}  # ręczne odpalenie z zakładki Actions (Run workflow) - omija bramkę czasu
+    - cron: '0 11 * * *'
+  workflow_dispatch: {}  # ręczne odpalenie: Actions -> Run workflow
   push:
     paths: ['data/inbox/**']  # plan B: wrzucenie zapisanej strony (data/inbox/regular.html) od razu uruchamia przebieg
 
@@ -22,47 +23,31 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Bramka czasu (8:00 czasu polskiego)
-        id: gate
-        run: |
-          H=$(TZ=Europe/Warsaw date +%H)
-          echo "W Polsce jest teraz godzina $H"
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$H" != "08" ] && [ "$H" != "09" ]; then
-            echo "go=0" >> "$GITHUB_OUTPUT"
-            echo "To nie jest termin na 8:00 w Polsce - pomijam ten przebieg."
-          else
-            echo "go=1" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout repo
-        if: steps.gate.outputs.go == '1'
         uses: actions/checkout@v4
 
       - name: Setup Python
-        if: steps.gate.outputs.go == '1'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Instalacja zależności
-        if: steps.gate.outputs.go == '1'
         run: pip install -r requirements.txt
 
       # --- SEZON ZASADNICZY: wyniki + terminarz z en.24score.com (to samo źródło co cała historia) ---
       - name: Pobierz wyniki sezonu zasadniczego z 24score
-        if: steps.gate.outputs.go == '1'
+        id: regular
         continue-on-error: true
         run: python scripts/fetch_regular_24score.py
 
-      # --- PRESEASON: lekki plik JSON, strona dociąga go sama ---
+      # --- PRESEASON ---
       - name: Pobierz wyniki preseason z 24score
-        if: steps.gate.outputs.go == '1'
         continue-on-error: true
         run: python scripts/fetch_preseason_24score.py
 
-      # Przebudowa tylko gdy są nowe mecze / zmieniony terminarz (enrich zapisuje bieżący znacznik czasu).
+      # Przebudowa całej strony (statystyki) tylko gdy są nowe mecze / zmieniony terminarz.
+      # Same wyniki i status strona dociąga na żywo z data/*.json, więc widać je od razu po commicie.
       - name: Przelicz dane i zbuduj stronę (tylko gdy są zmiany)
-        if: steps.gate.outputs.go == '1'
         run: |
           if [ "$(cat data/.last_update_had_changes 2>/dev/null)" = "1" ]; then
             python scripts/enrich.py
@@ -71,17 +56,28 @@ jobs:
             echo "Brak nowych meczów sezonu - pomijam przebudowę strony."
           fi
 
-      - name: Commit i push jeśli są zmiany
-        if: steps.gate.outputs.go == '1'
+      - name: Commit i push
         run: |
           git config user.name "nba-lamaki-bot"
           git config user.email "actions@github.com"
-          # enriched_data.json (ok. 28 MB) powstaje na nowo przy każdej przebudowie - nie commitujemy go, żeby repo nie puchło
-          git add data/preseason_results.json data/games_all.json data/fixtures_2026_27.json index.html
+          # enriched_data.json (ok. 28 MB) powstaje na nowo przy każdej przebudowie - nie commitujemy go
+          git add data/preseason_results.json data/games_all.json data/fixtures_2026_27.json data/update_status.json index.html
           if git diff --cached --quiet; then
             echo "Brak zmian - nic do commitowania."
           else
-            git commit -m "Automatyczna aktualizacja danych $(date -u +%Y-%m-%d)"
+            git commit -m "Automatyczna aktualizacja danych $(date -u +%Y-%m-%d\ %H:%M)"
             git pull --rebase --autostash
             git push
           fi
+
+      # Przebieg ma być CZERWONY, gdy pobieranie się nie udało - wtedy GitHub wyśle Ci maila i od razu widać problem.
+      - name: Sprawdź, czy pobieranie się udało
+        run: |
+          python - <<'PY'
+          import json, sys
+          st = json.load(open('data/update_status.json', encoding='utf-8'))
+          print(st)
+          if not st.get('ok'):
+              print('::error::Pobieranie wyników NIE powiodło się: ' + str(st.get('error')))
+              sys.exit(1)
+          PY
