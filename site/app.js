@@ -573,6 +573,38 @@ function weekStart(d) { const dt = new Date(d + 'T12:00:00'); return isoPlus(d, 
 function dowName(d) { return DOW_FULL[new Date(d + 'T12:00:00').getDay()]; }
 const dm = d => `${d.slice(8)}.${d.slice(5, 7)}`;
 
+
+// ---------- Wyniki i status na żywo (bez przebudowy strony) ----------
+// Bot commituje data/fixtures_2026_27.json i data/update_status.json po każdym przebiegu; strona dociąga je sama (GitHub Pages).
+let UPD_STATUS = null;
+function renderStatusBox() {
+  const el = document.getElementById('upd-status');
+  if (!el) return;
+  const fmt = ts => new Date(ts).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const played = FIXTURES.filter(f => f.q || f.fs);
+  const lastRes = played.length ? played.map(f => f.d).sort().pop() : null;
+  if (!UPD_STATUS) { el.innerHTML = `<div class="k">Aktualizacja wyników</div><div class="v">${lastRes ? 'wyniki do ' + dm(lastRes) : '—'}</div>`; return; }
+  const st = UPD_STATUS, age = (Date.now() - new Date(st.ts).getTime()) / 36e5;
+  const bad = !st.ok, stale = age > 30;
+  const cls = bad ? 'bad' : stale ? 'warn' : 'ok';
+  const line = bad ? `⚠ Pobieranie nie działa (${st.error || 'błąd'})` : stale ? `⚠ Brak aktualizacji od ${Math.round(age)} h` : '✅ Aktualizacja działa';
+  el.innerHTML = `<div class="k">Aktualizacja wyników</div><div class="upd ${cls}">${line}</div>
+    <div class="v">ost. przebieg: ${fmt(st.ts)}${lastRes ? `<br>wyniki do: ${dm(lastRes)} · rozegrane ${played.length}` : ''}${st.finals_without_quarters ? `<br>czeka na kwarty: ${st.finals_without_quarters}` : ''}</div>`;
+}
+function refreshLive() {
+  renderStatusBox();
+  if (typeof fetch !== 'function' || location.protocol === 'file:') return;
+  const t = Date.now();
+  fetch('data/update_status.json?v=' + t, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(st => { if (st) { UPD_STATUS = st; renderStatusBox(); } }).catch(() => {});
+  fetch('data/fixtures_2026_27.json?v=' + t, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).then(list => {
+    if (!Array.isArray(list) || list.length < 1000 || JSON.stringify(list) === JSON.stringify(FIXTURES)) return;
+    FIXTURES.length = 0; list.forEach(x => FIXTURES.push(x));
+    S27 = null; DOS = null; SCH = null; Object.keys(RK).forEach(k => delete RK[k]);
+    renderStatusBox();
+    const act = document.querySelector('.tab-btn.active'); if (act && RENDERERS[act.dataset.tab]) RENDERERS[act.dataset.tab]();
+  }).catch(() => {});
+}
+
 // ---------- 1. Terminarz + wyniki ----------
 function s27Build() {
   if (S27) return S27;
@@ -604,7 +636,8 @@ function s27Build() {
     const ctx = { b2bH: busy.has(f.h + '|' + p1), b2bA: busy.has(f.a + '|' + p1), t3H: t3(f.h), t3A: t3(f.a), restH: gap(f.h), restA: gap(f.a) };
     last[f.h] = f.d; last[f.a] = f.d;
     const nH = (cnt[f.h] = (cnt[f.h] || 0) + 1), nA = (cnt[f.a] = (cnt[f.a] || 0) + 1);
-    return { i, f, known, res, synth, ctx, k: days.indexOf(f.d) + 1, nH, nA, dos: null };
+    const final = !res && f.fs ? { fh: f.fs[0], fa: f.fs[1] } : null;
+    return { i, f, known, res, synth, final, ctx, k: days.indexOf(f.d) + 1, nH, nA, dos: null };
   });
   const byDay = {};
   rows.forEach(r => { (byDay[r.f.d] = byDay[r.f.d] || []).push(r); });
@@ -936,7 +969,7 @@ function seasonRowHTML(r) {
   const sub = (role, n, rk, rest) => `${role} · mecz ${n}${rk ? ` · #${rk}` : ''}${rest != null ? ` · odp. ${rest}` : ''}`;
   const mid = res
     ? `<div><span class="s-score"><b>${res.fh}:${res.fa}</b>${res.ot ? ' <span class="small-note">OT</span>' : ''}</span> <span class="badge ${badgeClass(res.cls)}">${clsLabel(res.cls)}</span><div class="s-tags" style="margin-top:5px;">${tags.join('')}</div></div>`
-    : `<div class="s-tags">${tags.join('') || '<span class="small-note">brak wyraźnych zależności</span>'}</div>`;
+    : `<div>${r.final ? `<div style="margin-bottom:4px;"><span class="s-score"><b>${r.final.fh}:${r.final.fa}</b></span> <span class="small-note">· wynik jest, czekamy na kwarty z 24score</span></div>` : ''}<div class="s-tags">${tags.join('') || '<span class="small-note">brak wyraźnych zależności</span>'}</div></div>`;
   return `<div class="s-row ${res ? rowClass(res.cls) : ''} ${heatClass(dd.hot.length)}" data-i="${r.i}">
     <div class="s-team">${f.h}<span class="vs">${sub('gosp.', r.nH, r.rankH, r.ctx.restH)}</span></div><div class="s-team">${f.a}<span class="vs">${sub('gość', r.nA, r.rankA, r.ctx.restA)}</span></div>
     ${mid}
@@ -974,7 +1007,7 @@ function renderSezon2627() {
   <div class="s-days" id="s-weeks">${wkBtns}<input type="date" id="s-jump" value="${days[0]}" min="${D.days[0]}" max="${D.days[D.days.length - 1]}" style="flex:none;width:140px;font-size:12px;"></div>
   <div id="s-daylist">${days.map(d => {
     const rs = D.byDay[d], dn = rs.filter(r => r.res), allDone = dn.length === rs.length;
-    const head = `<b>${dowName(d)} ${fmtDate(d)}</b><span class="kpill">K${rs[0].k}</span><span class="mono small-note" style="margin:0;">${rs.length} meczów</span>${dn.length ? rowPills(dn) : ''}`;
+    const head = `<b>${dowName(d)} ${fmtDate(d)}</b><span class="kpill">K${rs[0].k}</span><span class="mono small-note" style="margin:0;">${rs.length} meczów</span>${dn.length ? rowPills(dn) : ''}${rs.some(r => r.final) ? `<span class="day-pill" style="background:var(--panel);color:var(--ink-soft)">wyniki bez kwart ×${rs.filter(r => r.final).length}</span>` : ''}`;
     const key = 's|' + d;
     return dayBlockHTML(key, head, () => {
       rs.forEach(dossierFor);
@@ -2773,6 +2806,7 @@ const RENDERERS = {
 };
 selectTab('sezon2627');
 refreshPreseasonResults();
+refreshLive();
 
 // ============================================================
 // GLOBALNE WYSZUKIWANIE DRUŻYNY (dostępne z każdej zakładki)

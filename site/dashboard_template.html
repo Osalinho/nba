@@ -484,6 +484,8 @@ main{overflow-x:hidden;}
 .rzbar i{position:absolute;left:0;right:0;bottom:0;background:var(--green);}
 .rz b{color:var(--ink);font-size:10.5px;}
 tr.sch-stable td{background:rgba(255,138,31,.07);}
+.side-box .v{font-size:11.5px;color:var(--ink-soft);line-height:1.5;font-family:'IBM Plex Mono',monospace;}
+.upd{font-size:12.5px;font-weight:600;margin-bottom:3px;}.upd.ok{color:var(--green);}.upd.warn{color:var(--yellow);}.upd.bad{color:var(--red);}
 /* ---- karty faktów (teczka meczu) ---- */
 .fc-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
 .fc-sum div{background:var(--panel-alt);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;}
@@ -590,6 +592,7 @@ tr.sch-stable td{background:rgba(255,138,31,.07);}
       <option value="2024-25">2024-25</option>
       <option value="2023-24">2023-24</option>
     </select></div>
+  <div class="side-box" id="upd-status"></div>
   <nav class="tabs"><div class="tabs-inner" id="tabs-nav"></div></nav>
   <div class="side-box" style="position:relative;"><div class="k">Szukaj drużyny</div>
     <input type="text" id="global-team-search" placeholder="🔍 np. Lakers" autocomplete="off">
