@@ -20,6 +20,7 @@ Plan B: zapisz stronę (Ctrl+S) i wrzuć jako data/inbox/regular.html - wrzuceni
 import argparse
 import json
 import sys
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -33,6 +34,7 @@ ROOT = Path(__file__).parent.parent
 GAMES = ROOT / 'data' / 'games_all.json'
 FIXTURES = ROOT / 'data' / 'fixtures_2026_27.json'
 FLAG = ROOT / 'data' / '.last_update_had_changes'
+STATUS = ROOT / 'data' / 'update_status.json'
 INBOX = ROOT / 'data' / 'inbox' / 'regular.html'
 URL = 'https://en.24score.com/basketball/usa/nba/2026-2027/regular_season/fixtures/'
 SEASON = '2026-27'
@@ -42,29 +44,48 @@ def d(s):
     return datetime.strptime(s, '%d.%m.%Y').date()
 
 
+def write_status(**kw):
+    """Zapisuje data/update_status.json - strona pokazuje z niego, kiedy i czy aktualizacja się udała."""
+    st = {'ts': datetime.utcnow().strftime('%Y-%m-%dT%H:%MZ'), 'ok': False, 'source': None, 'error': None,
+          'new_games': 0, 'played': 0, 'finals_without_quarters': 0, 'last_result_date': None}
+    st.update(kw)
+    STATUS.write_text(json.dumps(st, ensure_ascii=False), encoding='utf-8')
+    print('STATUS:', json.dumps(st, ensure_ascii=False))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--file')
     ap.add_argument('--url', default=URL)
     args = ap.parse_args()
 
-    if args.file:
-        html = Path(args.file).read_text(encoding='utf-8', errors='ignore')
-    else:
-        html = download(args.url)
-        if not html and INBOX.exists():
-            print(f'Plan B: używam ręcznie zapisanej strony {INBOX.relative_to(ROOT)}')
-            html = INBOX.read_text(encoding='utf-8', errors='ignore')
+    source = '24score'
+    try:
+        if args.file:
+            html, source = Path(args.file).read_text(encoding='utf-8', errors='ignore'), 'plik'
+        else:
+            html = download(args.url)
+            if not html and INBOX.exists():
+                print(f'Plan B: używam ręcznie zapisanej strony {INBOX.relative_to(ROOT)}')
+                html, source = INBOX.read_text(encoding='utf-8', errors='ignore'), 'inbox'
+    except Exception:  # noqa: BLE001
+        traceback.print_exc()
+        html = None
     if not html:
-        print('::warning::Nie udało się pobrać strony 24score (szczegóły w logu powyżej) - dane bez zmian.')
+        print('::error::Nie udało się pobrać strony 24score (szczegóły w logu powyżej) - dane bez zmian.')
+        write_status(ok=False, error='nie udało się pobrać strony 24score')
         FLAG.write_text('0')
         return 0
 
     played = parse_html(html, SEASON, 'regular')
     fixtures = parse_text(html)
     print(f'Strona: {len(fixtures)} meczów w terminarzu, rozegranych: {len(played)}')
+    finals_only = [f for f in fixtures if 'fs' in f]
+    for f in finals_only:
+        print(f"  ~ wynik bez kwart (czekamy na 24score): {f['d']} {f['h']} {f['fs'][0]}:{f['fs'][1]} {f['a']}")
     if len(fixtures) < 1000:  # zabezpieczenie: pusta/ucięta strona nie może nadpisać terminarza
-        print('::warning::Terminarz na stronie wygląda na niepełny - nic nie zmieniam.')
+        print('::error::Terminarz na stronie wygląda na niepełny - nic nie zmieniam.')
+        write_status(ok=False, source=source, error=f'terminarz niepełny ({len(fixtures)} meczów)')
         FLAG.write_text('0')
         return 0
 
@@ -93,6 +114,8 @@ def main():
         FIXTURES.write_text(new_fx, encoding='utf-8')
         print('Terminarz 26/27 zaktualizowany.')
     FLAG.write_text('1' if (new or fx_changed) else '0')
+    last = max([f['d'] for f in fixtures if 'q' in f or 'fs' in f], default=None)
+    write_status(ok=True, source=source, new_games=len(new), played=len(played), finals_without_quarters=len(finals_only), last_result_date=last)
     return 0
 
 

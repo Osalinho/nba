@@ -38,6 +38,10 @@ def parse_text(html):
         if re.match(r'\d+:\d+', sc) and len(per) >= 4:
             g['q'] = [[int(x), int(y)] for x, y in per[:4]]
             g['ot'] = [[int(x), int(y)] for x, y in per[4:]]
+        elif re.match(r'\d+:\d+', sc):
+            # jest wynik końcowy, ale 24score nie podało jeszcze kwart - pokazujemy wynik, bez klasyfikacji łamaka
+            a1, a2 = re.match(r'(\d+):(\d+)', sc).groups()
+            g['fs'] = [int(a1), int(a2)]
         out.append(g)
     out.sort(key=lambda g: (g['d'], g['h']))
     return out
