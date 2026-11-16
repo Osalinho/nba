@@ -56,12 +56,19 @@ jobs:
             echo "Brak nowych meczów sezonu - pomijam przebudowę strony."
           fi
 
+      # Typy (Elo + model zbieżności) liczone zawsze po pobraniu wyników; błąd typera nie zatrzymuje aktualizacji danych
+      - name: Przelicz typy
+        continue-on-error: true
+        run: |
+          python scripts/typer.py
+          python scripts/typer_zbieznosc.py
+
       - name: Commit i push
         run: |
           git config user.name "nba-lamaki-bot"
           git config user.email "actions@github.com"
           # enriched_data.json (ok. 28 MB) powstaje na nowo przy każdej przebudowie - nie commitujemy go
-          git add data/preseason_results.json data/games_all.json data/fixtures_2026_27.json data/update_status.json index.html
+          git add data/preseason_results.json data/games_all.json data/fixtures_2026_27.json data/update_status.json data/typy_2026_27.json data/typy_zbieznosc_2026_27.json index.html
           if git diff --cached --quiet; then
             echo "Brak zmian - nic do commitowania."
           else
