@@ -116,6 +116,7 @@ const TABS = [
   { id: 'terminarz', label: '🗓 Terminarz (historia)' },
   { id: 'druzyny', label: '🏀 Drużyny i pary' },
   { id: 'analiza', label: '🔎 Wzorce i schematy' },
+  { id: 'typy', label: '🎯 Typy' },
 ];
 const tabsNav = document.getElementById('tabs-nav');
 TABS.forEach((t, i) => {
@@ -2798,11 +2799,45 @@ function renderForecastResult() {
   box.innerHTML = html;
 }
 
+
+// ============================================================
+// TYPY (v2) — model zbieżności sygnałów + wyrównanie meczu (Elo); dane: data/typy_*.json (scripts/typer*.py)
+// ============================================================
+let typyData = null, typyDay = null, typyFilter = 'wszystkie';
+async function renderTypy() {
+  const el = document.getElementById('view-typy');
+  if (!typyData) {
+    el.innerHTML = '<div class="empty-state"><div class="ico">⏳</div>Ładowanie typów…</div>';
+    try {
+      const [a, b] = await Promise.all(['data/typy_zbieznosc_2026_27.json', 'data/typy_2026_27.json'].map(u => fetch(u + '?v=' + Date.now()).then(r => r.json())));
+      const elo = {}; b.forEach(x => elo[x.d + '|' + x.h + '|' + x.a] = x.typ);
+      typyData = a.map(x => Object.assign({}, x, { elo: elo[x.d + '|' + x.h + '|' + x.a] || '—' }));
+    } catch (e) { el.innerHTML = '<div class="empty-state"><div class="ico">⚠</div>Brak plików data/typy_*.json — uruchom scripts/typer.py i scripts/typer_zbieznosc.py.</div>'; return; }
+  }
+  const days = [...new Set(typyData.map(x => x.d))];
+  if (!typyDay || !days.includes(typyDay)) typyDay = days[0];
+  const COL = { 'ŁAMAK': 'orange', 'REMIS': 'purple' }, ELO = { '1/2': 'c12', '2/1': 'c21', 'X': 'cx', 'NIC': 'cnone' };
+  const rows = typyData.filter(x => x.d === typyDay && (typyFilter === 'wszystkie' || x.typ === typyFilter)).map(x => {
+    const c = COL[x.typ], bg = c ? `var(--${c}-soft)` : 'var(--panel-alt)', bd = c ? `var(--${c})` : 'var(--line)';
+    const e = ELO[x.elo] ? `<span class="chip" style="cursor:default;background:var(--${ELO[x.elo]}-soft);color:var(--${ELO[x.elo]});">Elo: ${x.elo}</span>` : '';
+    const why = x.why.length ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--ink-soft);">${x.why.map(w => `<li>${w}</li>`).join('')}</ul>` : '';
+    return `<div style="background:${bg};border-left:4px solid ${bd};border-radius:8px;padding:10px 12px;margin:6px 0;">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><span><b>${x.h}</b> – <b>${x.a}</b> <span style="color:var(--ink-soft);font-size:12px;">kolejka ${x.k}</span></span>
+      <span>${e} <b style="color:${c ? 'var(--' + c + ')' : 'var(--ink-soft)'}">${x.typ}</b></span></div>${why}</div>`;
+  }).join('');
+  const btn = (k) => `<button class="tab-btn${typyFilter === k ? ' active' : ''}" onclick="typyFilter='${k}';renderTypy()">${k}</button>`;
+  el.innerHTML = `<div class="section-title"><h2>🎯 Typy</h2><div class="rule"></div></div>
+  <div class="section-desc">Model zbieżności: sygnały z historii drużyn (cały dorobek, miesiąc, etap sezonu), ligi (ta sama data ±3 dni, ta sama kolejka ±1) i H2H, z wagami dobranymi na danych. Pod typem wypisane są sygnały, które się zbiegły. Backtest 9704 meczów: typ ŁAMAK 28,2% przy średniej 27,9%, REMIS 6,0% przy 5,3% — przewaga minimalna. Chip „Elo” to osobny typ z wyrównania meczu (1/2, 2/1, X, NIC) — to jedyny sygnał z realną, choć małą przewagą (1/2 13,1% vs 10,6%, 2/1 14,8% vs 12,0%, NIC 77,9% vs 72,3%).</div>
+  <div class="controls-row" style="margin:10px 0;"><div class="field"><label>Dzień</label><select onchange="typyDay=this.value;renderTypy()">${days.slice(0, 120).map(d => `<option value="${d}"${d === typyDay ? ' selected' : ''}>${d}</option>`).join('')}</select></div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;">${['wszystkie', 'ŁAMAK', 'REMIS', '—'].map(btn).join('')}</div></div>
+  ${rows || '<div class="empty-state"><div class="ico">◇</div>Brak meczów dla tego filtra.</div>'}`;
+}
+
 // ============================================================
 // INIT
 // ============================================================
 const RENDERERS = {
-  sezon2627: renderSezon2627, zakonczone: renderZakonczone, terminarz: renderTerminarz, druzyny: renderDruzynyHost, analiza: renderAnaliza
+  sezon2627: renderSezon2627, zakonczone: renderZakonczone, terminarz: renderTerminarz, druzyny: renderDruzynyHost, analiza: renderAnaliza, typy: renderTypy
 };
 selectTab('sezon2627');
 refreshPreseasonResults();
